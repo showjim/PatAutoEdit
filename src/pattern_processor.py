@@ -121,6 +121,58 @@ def add_repeat(something: str, timemode: str) -> str:
                     prev_line = line
     return otherthing
 
+def merge_instrument_declare(temp_file: str) -> None:
+    """Merge multiple instrument declarations in the file before '>' line into a single declaration"""
+    instrument_content = []
+    header_lines = []
+    body_lines = []
+    found_instruments = False
+    in_instruments_block = False
+    
+    # Read the file and process lines
+    with openfile(temp_file) as f:
+        for line in f:
+            if line.find(r"$") != -1:
+                body_lines.append(line)
+                # Add all remaining lines to body
+                body_lines.extend(f.readlines())
+                break
+                
+            if line.strip() == "instruments = {":
+                found_instruments = True
+                in_instruments_block = True
+                continue
+            
+            if in_instruments_block:
+                if line.strip() == "}":
+                    in_instruments_block = False
+                else:
+                    # Add instrument declaration line
+                    instrument_content.append(line.strip())
+                continue
+                
+            header_lines.append(line)
+    
+    # Only proceed if we found multiple instrument declarations
+    if found_instruments:
+        # Write back the merged content
+        with openfile(temp_file, 'w') as f:
+            # Write header lines
+            for line in header_lines:
+                f.write(line)
+            
+            # Write merged instruments block if we have instrument content
+            if instrument_content:
+                f.write("instruments = {\n")
+                for line in instrument_content:
+                    if line:  # Skip empty lines
+                        f.write(f"{line}\n")
+                f.write("}\n\n")
+            
+            # Write the rest of the file
+            for line in body_lines:
+                f.write(line)
+
 def edit_pattern(textoutwin: Any, pin_name: str, something: str, cycle_range: List, 
                 mode: str, timemode: str, index_mode: str, user_string: str = '', 
                 pin_name_ori: str = "") -> str:
@@ -261,7 +313,10 @@ def edit_pattern(textoutwin: Any, pin_name: str, something: str, cycle_range: Li
                                             try:
                                                 start_index = line_list.index(">")
                                             except Exception as e:
-                                                print(e)
+                                                textoutwin(f"Error: '>' is not in list, {e} ")
+                                                print(f"Error: '>' is not in list, {e} ")
+                                                has_errors = True
+                                                return something  # Return original file path to indicate error
                                             if line_list[start_index + 1 + k + 1] == '0' or line_list[start_index + 1 + k + 1] == '1':
                                                 textoutwin("Error: Drive data found in DigCap, line " + str(line_index) + ", and pin data index " + str(k))
                                                 print("Error: Drive data found in DigCap, line " + str(line_index) + ", and pin data index " + str(k))
@@ -269,7 +324,7 @@ def edit_pattern(textoutwin: Any, pin_name: str, something: str, cycle_range: Li
                                                 return something  # Return original file path to indicate error
                                             else:
                                                 line_list[start_index + 1 + k + 1] = "V"
-                                        line = "(({0}):DigCap = Store)".format(pin_name_ori) + " ".join(line_list) + "\n"
+                                        line = "(({0}):DigCap = Store) ".format(pin_name_ori) + " ".join(line_list) + "\n"
                                 else:
                                     cycle_num_list = [cycle_num, cycle_num + repeat_cnt - 1]
                                     if check_in_same_range(cycle_num_list, cycle_range):
@@ -283,7 +338,7 @@ def edit_pattern(textoutwin: Any, pin_name: str, something: str, cycle_range: Li
                                                 return something  # Return original file path to indicate error
                                             else:
                                                 line_list[start_index + 1 + k + 1] = "V"
-                                        line = "(({0}):DigCap = Store)".format(pin_name_ori) + " ".join(line_list) + "\n"
+                                        line = "(({0}):DigCap = Store) ".format(pin_name_ori) + " ".join(line_list) + "\n"
 
                             elif mode == 'DSSC Source':
                                 if repeat_cnt == 1:
@@ -298,7 +353,7 @@ def edit_pattern(textoutwin: Any, pin_name: str, something: str, cycle_range: Li
                                                 return something  # Return original file path to indicate error
                                             else:
                                                 line_list[start_index + 1 + k + 1] = "D"
-                                        line = "(({0}):DigSrc = Send)".format(pin_name_ori) + " ".join(line_list) + "\n"
+                                        line = "(({0}):DigSrc = Send) ".format(pin_name_ori) + " ".join(line_list) + "\n"
                                 else:
                                     cycle_num_list = [cycle_num, cycle_num + repeat_cnt - 1]
                                     if check_in_same_range(cycle_num_list, cycle_range):
@@ -312,7 +367,7 @@ def edit_pattern(textoutwin: Any, pin_name: str, something: str, cycle_range: Li
                                                 return something  # Return original file path to indicate error
                                             else:
                                                 line_list[start_index + 1 + k + 1] = "D"
-                                        line = "(({0}):DigSrc = Send)".format(pin_name_ori) + " ".join(line_list) + "\n"
+                                        line = "(({0}):DigSrc = Send) ".format(pin_name_ori) + " ".join(line_list) + "\n"
 
                             elif mode == 'CMEM/HRAM Capture':
                                 if repeat_cnt == 1:
@@ -380,6 +435,10 @@ def edit_pattern(textoutwin: Any, pin_name: str, something: str, cycle_range: Li
         # Only rename temp file to final output if no errors occurred
         if not has_errors:
             if os.path.exists(temp_file):
+                # Merge instrument declarations if in DSSC modes
+                if mode in ['DSSC Capture', 'DSSC Source']:
+                    merge_instrument_declare(temp_file)
+                
                 if os.path.exists(otherthing):
                     os.remove(otherthing)
                 os.rename(temp_file, otherthing)
