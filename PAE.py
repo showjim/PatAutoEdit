@@ -20,7 +20,7 @@ from src.main import main4, main11
 
 multiprocessing.freeze_support()
 
-version = 'V1.12.26'
+version = 'V1.12.27'
 
 class DemoClass(tk.Tk):
 
@@ -215,9 +215,23 @@ class DemoClass(tk.Tk):
         bottom_bar.grid(row=1, column=0, sticky=tk.W + tk.E)
         right_bar.config(command=self.textbox.yview)
         bottom_bar.config(command=self.textbox.xview)
+        
+        # Configure text tags for logging
+        self.textbox.tag_configure("error", foreground="red", font=("TkDefaultFont", 10, "bold"))
+        self.textbox.tag_configure("warning", foreground="orange", font=("TkDefaultFont", 10, "bold"))
+        self.textbox.tag_configure("info", foreground="blue", font=("TkDefaultFont", 10))
 
     def put_data_log(self, data_log):
-        self.textbox.insert(tk.END, data_log + '\n')
+        # Insert text with appropriate tags based on message type
+        if data_log.startswith("Error:"):
+            self.textbox.insert(tk.END, data_log + '\n', "error")
+        elif data_log.startswith("Warning:"):
+            self.textbox.insert(tk.END, data_log + '\n', "warning")
+        elif data_log.startswith("Info:"):
+            self.textbox.insert(tk.END, data_log + '\n', "info")
+        else:
+            self.textbox.insert(tk.END, data_log + '\n')
+            
         self.textbox.see(tk.END)
         self.textbox.update()
 

@@ -5,3 +5,9 @@
 /dist
 /*.spec
 /release/*.7z
+/.idea
+/Output
+/tempDir
+/src/__pycache__
+/work
+
