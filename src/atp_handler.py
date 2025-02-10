@@ -108,7 +108,7 @@ def find_pin_index(mode:str, pin_names: str, str_line: str, textoutwin) -> List[
             if tmparray[x] == pin_name[i]:
                 index.append(x)
                 
-    if (len(index) != len(pin_name)) and (mode != 'WFLAG'):
+    if (len(index) != len(pin_name)) and (mode not in ['WFLAG', 'Add Opcode']):
         index = []
         textoutwin("Error: Cannot find all given pins")
         print("Error: Cannot find all given pins")
