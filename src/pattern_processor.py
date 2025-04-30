@@ -322,6 +322,13 @@ def edit_pattern(textoutwin: Any, pin_name: str, something: str, cycle_range: Li
                                                 print("Error: Drive data found in DigCap, line " + str(line_index) + ", and pin data index " + str(k))
                                                 has_errors = True
                                                 return something  # Return original file path to indicate error
+                                            elif line_list[start_index + 1 + k + 1] == 'X':
+                                                textoutwin("Error: ""X"" data found in DigCap, line " + str(
+                                                    line_index) + ", and pin data index " + str(k))
+                                                print("Error: ""X"" data found in DigCap, line " + str(
+                                                    line_index) + ", and pin data index " + str(k))
+                                                has_errors = True
+                                                return something  # Return original file path to indicate error
                                             else:
                                                 line_list[start_index + 1 + k + 1] = "V"
                                         line = "(({0}):DigCap = Store) ".format(pin_name_ori) + " ".join(line_list) + "\n"
@@ -334,6 +341,13 @@ def edit_pattern(textoutwin: Any, pin_name: str, something: str, cycle_range: Li
                                             if line_list[start_index + 1 + k + 1] == '0' or line_list[start_index + 1 + k + 1] == '1':
                                                 textoutwin("Error: Drive data found in DigCap, line " + str(line_index) + ", and pin data index " + str(k))
                                                 print("Error: Drive data found in DigCap, line " + str(line_index) + ", and pin data index " + str(k))
+                                                has_errors = True
+                                                return something  # Return original file path to indicate error
+                                            elif line_list[start_index + 1 + k + 1] == 'X':
+                                                textoutwin("Error: ""X"" data found in DigCap, line " + str(
+                                                    line_index) + ", and pin data index " + str(k))
+                                                print("Error: ""X"" data found in DigCap, line " + str(
+                                                    line_index) + ", and pin data index " + str(k))
                                                 has_errors = True
                                                 return something  # Return original file path to indicate error
                                             else:
@@ -380,6 +394,11 @@ def edit_pattern(textoutwin: Any, pin_name: str, something: str, cycle_range: Li
                                                 print("Error: Drive data found in Cap, line " + str(line_index) + ", and pin data index " + str(k))
                                                 has_errors = True
                                                 return something  # Return original file path to indicate error
+                                            elif line_list[start_index + 1 + k + 1] == 'X':
+                                                textoutwin("Error: ""X"" data found in Cap, line " + str(line_index) + ", and pin data index " + str(k))
+                                                print("Error: ""X"" data found in Cap, line " + str(line_index) + ", and pin data index " + str(k))
+                                                has_errors = True
+                                                return something  # Return original file path to indicate error
                                             else:
                                                 line_list[start_index + 1 + k + 1] = "V"
                                         line = "stv\t" + " ".join(line_list) + "\n"
@@ -392,6 +411,11 @@ def edit_pattern(textoutwin: Any, pin_name: str, something: str, cycle_range: Li
                                             if line_list[start_index + 1 + k + 1] == '0' or line_list[start_index + 1 + k + 1] == '1':
                                                 textoutwin("Error: Drive data found in Cap, line " + str(line_index) + ", and pin data index " + str(k))
                                                 print("Error: Drive data found in Cap, line " + str(line_index) + ", and pin data index " + str(k))
+                                                has_errors = True
+                                                return something  # Return original file path to indicate error
+                                            elif line_list[start_index + 1 + k + 1] == 'X':
+                                                textoutwin("Error: ""X"" data found in Cap, line " + str(line_index) + ", and pin data index " + str(k))
+                                                print("Error: ""X"" data found in Cap, line " + str(line_index) + ", and pin data index " + str(k))
                                                 has_errors = True
                                                 return something  # Return original file path to indicate error
                                             else:
