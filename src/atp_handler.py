@@ -7,6 +7,7 @@ import re
 from typing import Dict, List
 from src.file_ops import openfile
 from src.utils import process_input_cycles
+csv.field_size_limit(100000000)
 
 def read_csv(something: str) -> Dict:
     """Read CSV file containing cycle ranges"""
