@@ -39,13 +39,20 @@ def process_input_cycles(row: str):
     tmparray = [x.split('-') for x in tmparray]
     tmparray = [sorted([int(y) for y in x]) for x in tmparray]
     tmparray.sort(key=lambda x: x[0]) # sort list according to the first element of sub-list
-    return tmparray
+    tmpSet = convert2oneDlist(tmparray)
+    return tmpSet
 
-def check_in_range(cycle_num, cycle_range):
+def convert2oneDlist(source_array):
+    """Convert 2D list to 1D"""
+    target_lines = [] #set()
+    for start, end in source_array:
+        target_lines.extend(range(start, end + 1))  # 生成所有行号
+    return target_lines
+
+def check_in_range(cycle_num:int, cycle_range:set):
     """Check if cycle number is in range"""
-    for x in range(len(cycle_range)):
-        if cycle_num in range(cycle_range[x][0], cycle_range[x][1] + 1):
-            return True
+    if cycle_num in cycle_range:
+        return True
     return False
 
 def check_in_same_range(cycle_num_list, cycle_range):
