@@ -180,8 +180,6 @@ def edit_pattern(textoutwin: Any, pin_name: str, something: str, cycle_range: Li
     # Track if any errors occurred during processing
     has_errors = False
 
-    last_cycle_num = cycle_range[-1]
-    cycle_range = set(cycle_range)
     output_path = os.path.join(os.getcwd(), 'Output')
     if not os.path.exists(output_path):
         os.mkdir(output_path)
@@ -213,6 +211,9 @@ def edit_pattern(textoutwin: Any, pin_name: str, something: str, cycle_range: Li
     cycle_num = 0
     repeat_cnt = 0
     temp_file = None
+
+    last_cycle_num = cycle_range[-1]
+    cycle_range = set(cycle_range)
 
     # Remove all "repeat" opcode first
     if index_mode == 'Cycle':
