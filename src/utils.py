@@ -1,7 +1,7 @@
 '''
 Utility functions for pattern processing
 '''
-import re
+import re, os
 
 def cmp(a, b):
     """Compare two lists, handling comments"""
@@ -86,3 +86,11 @@ def check_tset_line(tset_list, line):
             ii = i
             return ii
     return ii
+
+def get_all_files(filepath, ext_name):
+    result_list = []
+    for parent, dirnames, filenames in os.walk(filepath):
+        for filename in filenames:
+            if filename.endswith(ext_name): # and filename.startswith("TSB_"):
+                result_list.append(parent + "/" + filename)
+    return result_list

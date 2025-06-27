@@ -2,3 +2,4 @@ Instance(Optional),Pattern,Status,Process Type,Pin or Method,Cycle,Pin or Method
 ,Sample_ATP.atp,Done,DSSC Capture,TDO,[7-7];[12-12],DSSC Capture,PORN,[13-14]
 ,Sample_ATP - 1.atp,Done,DSSC Source,TDI,[7-7];[9-9],DSSC Capture,TDO,[7-7];[12-12]
 ,Sample_ATP - 2.atp,,Compress Pattern,,,,,
+,Sample_ATP - 3.atp,,WFLAG,,[8-8],,,

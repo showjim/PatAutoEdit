@@ -14,13 +14,13 @@ from multiprocessing import Pool, Manager
 
 # Import from new modular structure
 from src.atp_handler import read_csv, read_pinmap, analyse_merge_config
-from src.pattern_processor import edit_pattern
+from src.pattern_processor import edit_pattern, extract_cycle_on_keyword
 from src.utils import in_list
 from src.main import main4, main11
 
 multiprocessing.freeze_support()
 
-version = 'V1.12.32'
+version = 'V1.13.1'
 
 class DemoClass(tk.Tk):
 
@@ -30,6 +30,7 @@ class DemoClass(tk.Tk):
         self.CSVfilename = []
         self.createWidgets()
         self.Pinmapfilename = [] #""
+        self.FileFolder = ''
 
     def createWidgets(self):
         self.title('Pattern Auto Edit Tool ' + version)
@@ -45,15 +46,18 @@ class DemoClass(tk.Tk):
 
         topframe = ttk.Frame(notebook, height=80, borderwidth=1)
         topframe_simple = ttk.Frame(notebook, height=80, borderwidth=1)
+        topframe_utils = ttk.Frame(notebook, height=80, borderwidth=1)
         contentframe = ttk.Frame(self, height=80, borderwidth=1)
         contentframe.rowconfigure(0, weight=1)
         contentframe.columnconfigure(0, weight=1)
         topframe.grid(row=0, column=0, sticky=tk.W + tk.S + tk.E + tk.N)
         topframe_simple.grid(row=0, column=0, sticky=tk.W + tk.S + tk.E + tk.N)
+        topframe_utils.grid(row=0, column=0, sticky=tk.W + tk.S + tk.E + tk.N)
         contentframe.grid(row=1, column=0, sticky=tk.W + tk.S + tk.E + tk.N)
 
         notebook.add(topframe, text='Classical')
         notebook.add(topframe_simple, text='Simplified')
+        notebook.add(topframe_utils, text='Utils')
 
         # Step 1. Please enter ATP file path and name:
         self.ety2 = tk.Entry(topframe, width=40)
@@ -204,6 +208,31 @@ class DemoClass(tk.Tk):
         # Step 6, button
         self.btn_simple = tk.Button(topframe_simple, text='Generate', command=self.SayHello_simple)
         self.btn_simple.grid(row=6, column=0, columnspan=2)
+
+        # Utils Tab
+        # Step 1. Please enter ATP file path and name:
+        self.ety1_utils = tk.Entry(topframe_utils, width=40)
+        self.ety1_utils.grid(row=0, column=0)
+        self.btn1_utils = tk.Button(
+            topframe_utils,
+            text='Select ATP Folder',
+            command=lambda: self.GetFolderPath(self.contents1_utils), width=30)
+        self.btn1_utils.grid(row=0, column=1)
+        self.contents1_utils = StringVar()
+        self.contents1_utils.set("Please Select ATP Folder")
+        self.ety1_utils.config(textvariable=self.contents1_utils)
+
+        # Step 2. Keyword Entry
+        self.ety2_utils = tk.Entry(topframe_utils, width=40)
+        self.ety2_utils.grid(row=1, column=0)
+        self.contents2_utils = StringVar()
+        self.contents2_utils.set("Please Enter the Keyword in ATP Comment")
+        self.ety2_utils.config(textvariable=self.contents2_utils)
+
+        # Step 6, Run button
+        self.btn_simple = tk.Button(topframe_utils, text='Generate', command=self.SayHello_utils)
+        self.btn_simple.grid(row=2, column=0, columnspan=2)
+
 
         # output log part
         right_bar = tk.Scrollbar(contentframe, orient=tk.VERTICAL)
@@ -391,6 +420,13 @@ class DemoClass(tk.Tk):
             self.put_data_log(error_msg)
             self.switchButtonState(self.btn)
 
+    def SayHello_utils(self):
+        FileFolder = self.contents1_utils.get()
+        Keyword = self.contents2_utils.get()
+        textout = self.put_data_log
+
+        extract_cycle_on_keyword(FileFolder, Keyword, textout)
+
     def my_callback(self, result):
         self.counter.value += 1
         if self.counter.value == self.total_tasks:
@@ -425,9 +461,9 @@ class DemoClass(tk.Tk):
         contents3.set(self.Pinmapfilename)
 
     def GetFolderPath(self, contents2):
-        global FolderPath
-        FolderPath = tk.filedialog.askdirectory()
-        contents2.set(FolderPath)
+        # global FolderPath
+        self.FolderPath = tk.filedialog.askdirectory()
+        contents2.set(self.FolderPath)
 
     def addmenu(self, Menu):
         Menu(self)

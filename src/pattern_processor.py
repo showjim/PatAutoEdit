@@ -1,11 +1,11 @@
 '''
 Pattern processing module for ATP file modifications
 '''
-import os
+import os, csv
 import re
 from typing import List, Any, Tuple
 from src.file_ops import openfile, copy_and_rename
-from src.utils import get_repeat_cnt, cmp, check_in_range, check_in_same_range
+from src.utils import get_repeat_cnt, cmp, check_in_range, check_in_same_range, get_all_files
 from src.atp_handler import find_pin_index
 
 def remove_opcode(something: str, user_string: str) -> str:
@@ -479,3 +479,49 @@ def edit_pattern(textoutwin: Any, pin_name: str, something: str, cycle_range: Li
         return something
 
     return something  # Return original file path if we somehow get here
+
+def extract_cycle_on_keyword(fileFolder: str, keyword: str, textoutwin):
+    """Extract cycle_on keyword from ATP files."""
+    resultDict = {}
+    resylt_list = get_all_files(fileFolder, ".atp")
+
+    for singleFile in resylt_list:
+        removeRepeatFile = remove_repeat(singleFile, '1')
+        cycle_num = 0
+        fileName = os.path.basename(singleFile)
+        resultDict[fileName] = []
+        try:
+            with openfile(removeRepeatFile) as atp_file:
+                while True:
+                    line = atp_file.readline()
+                    if line.find(r">") != -1:
+                        line, sep, tail = line.partition(';')
+
+                        if keyword in tail:
+                            resultDict[fileName].append(cycle_num)
+
+                    cycle_num += 1
+                    if len(line) == 0:
+                        break
+        except Exception as e:
+            textoutwin(f"Error: An unexpected error occurred: {str(e)}")
+            print(f"Error: An unexpected error occurred: {str(e)}")
+            if removeRepeatFile and os.path.exists(removeRepeatFile):
+                os.remove(removeRepeatFile)
+
+        # restore
+        if os.path.exists(removeRepeatFile):
+            os.remove(removeRepeatFile)
+
+    # print to csv
+    with open(fileFolder+ '/extract_result.csv', 'w', newline='', encoding='utf-8') as f:
+        writer = csv.writer(f)
+        for key, value in resultDict.items():
+            cycleContent = ';'.join(['[' + str(x) + '-' + str(x) + ']' for x in value])
+            writer.writerow([key, cycleContent])
+    textoutwin(f"Info: Extraction done.")
+    print(f"Info: Extraction done.")
+
+
+if __name__ == '__main__':
+    extract_cycle_on_keyword(r"C:\Users\zhouchao\PycharmProjects\EditPat\Sample", "Wait")
