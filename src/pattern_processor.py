@@ -500,7 +500,7 @@ def extract_cycle_on_keyword(fileFolder: str, keyword: str, textoutwin):
                         if keyword in tail:
                             resultDict[fileName].append(cycle_num)
 
-                    cycle_num += 1
+                        cycle_num += 1
                     if len(line) == 0:
                         break
         except Exception as e:
