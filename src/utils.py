@@ -68,6 +68,8 @@ def get_repeat_cnt(line):
     repeat_cnt = 0
     p = re.compile(r'(?<=repeat)\s+\d+')
     m = re.search(p, line)
+    if 'repeat' in line:
+        pass
     if m:
         repeat_cnt = int(m.group())
 

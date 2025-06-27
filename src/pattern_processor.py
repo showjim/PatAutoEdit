@@ -63,7 +63,8 @@ def remove_repeat(something: str, timemode: str) -> str:
                         for i in range(len(line)):
                             new_atp_file.write(line[i])
 
-                        if (line[-1].find(r'}') != -1) or line[-1] == '':
+                        content_line, sep, tail = line[-1].partition(';')
+                        if content_line.strip().endswith(r'}') or line[-1] == '':
                             body_flag = False
     return otherthing
 
