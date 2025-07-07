@@ -44,13 +44,18 @@ def remove_repeat(something: str, timemode: str) -> str:
                     new_atp_file.write(headerline)
                 else:
                     for i in range(line_num):
+                        content = ""
                         while True:
                             tmp_line = atp_file.readline()
                             if tmp_line.strip().startswith(r'//'):
                                 continue
+                            elif ">" not in tmp_line and len(tmp_line) > 0:
+                                content += tmp_line
+                                continue
                             else:
+                                content += tmp_line
                                 break
-                        line.append(tmp_line)
+                        line.append(content)
                     repeat_cnt = get_repeat_cnt(line[-1])
 
                     if repeat_cnt > 1:
