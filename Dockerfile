@@ -4,7 +4,7 @@
 
 # 由于您正在使用 M1 Mac，我们将使用 buildx 来构建镜像
 # 因此，您不需要在 Dockerfile 中指定平台
-FROM python:3.9-slim
+FROM python:3.11-slim-bookworm
 
 # 设置工作目录
 WORKDIR /app
