@@ -20,7 +20,7 @@ from src.main import main4, main11
 
 multiprocessing.freeze_support()
 
-version = 'V1.13.4'
+version = 'V1.13.5'
 
 class DemoClass(tk.Tk):
 

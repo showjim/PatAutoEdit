@@ -166,14 +166,14 @@ def merge_instrument_declare(temp_file: str) -> None:
             # Write header lines
             for line in header_lines:
                 f.write(line)
-            
-            # Write merged instruments block if we have instrument content
-            if instrument_content:
-                f.write("instruments = {\n")
-                for line in instrument_content:
-                    if line:  # Skip empty lines
-                        f.write(f"{line}\n")
-                f.write("}\n\n")
+                if line[0:12] == "import tset " or line[0:22] == 'import_all_undefineds ':
+                    # Write merged instruments block if we have instrument content
+                    if instrument_content:
+                        f.write("instruments = {\n")
+                        for line in instrument_content:
+                            if line:  # Skip empty lines
+                                f.write(f"{line}\n")
+                        f.write("}\n\n")
             
             # Write the rest of the file
             for line in body_lines:
