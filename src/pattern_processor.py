@@ -119,7 +119,8 @@ def add_repeat(something: str, timemode: str) -> str:
                             new_atp_file.write('{0}'.format(prev_line[-1]))
                         repeat_cnt = 1
 
-                    if (line[-1].find(r'}') != -1) or line[-1] == '':
+                    line_no_comment, sep, tail = line[-1].partition(r'//')
+                    if (line_no_comment.find(r'}') != -1) or line[-1] == '':
                         body_flag = False
                         for i in range(len(line)):
                             new_atp_file.write('{0}'.format(line[i]))
