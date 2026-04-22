@@ -222,7 +222,7 @@ def _apply_dssc_capture(line: str, line_list: List, index: List[int],
                          pin_name_ori: str, line_index: int, logger: Logger) -> str:
     """Apply DSSC Capture mode: replace pin data with 'V' and add DigCap Store prefix."""
     line_list = _validate_and_modify_pin_data(
-        line_list, index, ['0', '1', 'X'], 'V', 'DigCap', line_index, logger)
+        line_list, index, ['0', '1'], 'V', 'DigCap', line_index, logger)
     return "(({0}):DigCap = Store) ".format(pin_name_ori) + " ".join(line_list) + "\n"
 
 
@@ -230,7 +230,7 @@ def _apply_dssc_source(line: str, line_list: List, index: List[int],
                         pin_name_ori: str, line_index: int, logger: Logger) -> str:
     """Apply DSSC Source mode: replace pin data with 'D' and add DigSrc Send prefix."""
     line_list = _validate_and_modify_pin_data(
-        line_list, index, ['H', 'L'], 'D', 'DigSrc', line_index, logger)
+        line_list, index, ['H', 'L', 'X'], 'D', 'DigSrc', line_index, logger)
     return "(({0}):DigSrc = Send) ".format(pin_name_ori) + " ".join(line_list) + "\n"
 
 
@@ -239,7 +239,7 @@ def _apply_cmem_capture(line: str, line_list: List, index: List[int],
                          repeat_cnt: int) -> str:
     """Apply CMEM/HRAM Capture mode: replace pin data with 'V' and add stv prefix."""
     line_list = _validate_and_modify_pin_data(
-        line_list, index, ['0', '1', 'X'], 'V', 'Cap', line_index, logger)
+        line_list, index, ['0', '1'], 'V', 'Cap', line_index, logger)
     if repeat_cnt == 1:
         return "stv\t" + " ".join(line_list) + "\n"
     else:
