@@ -5,8 +5,9 @@ import streamlit as st
 import pandas as pd
 import os
 from pathlib import Path
-from src.main import main11
+from src.main import process_atp_simple
 from src.file_ops import  get_all_files_list, make_zip
+from src.logger import Logger
 from PAE import version
 
 
@@ -93,6 +94,8 @@ By ENTERING PASSWORD "teradyne" of this tool, you acknowledge that you have read
     def send_log(data_log):
         st.session_state["PAE_logprint"] += f'{datetime.now()} - {data_log}\n'
         log_text_area.code(st.session_state["PAE_logprint"])
+
+    logger = Logger(gui_callback=send_log)
 
 
     # Step 1. Upload atp/atp.gz files
@@ -206,7 +209,7 @@ By ENTERING PASSWORD "teradyne" of this tool, you acknowledge that you have read
     if st.button("Run Post-Process"):
         merge_config_file = os.path.join(OutputPath, "sample.csv")
         merge_config_file_content = st.session_state["CSVFileTab"].to_csv(merge_config_file, index=False)
-        result_fils = main11(st.session_state["FileList"], merge_config_file, send_log, st.session_state["PinmapFile"]) #print_info)
+        result_fils = process_atp_simple(st.session_state["FileList"], merge_config_file, logger, st.session_state["PinmapFile"]) #print_info)
         st.session_state["ResultFiles"] = result_fils
         st.session_state["ZipFilesFlag"] = True
 

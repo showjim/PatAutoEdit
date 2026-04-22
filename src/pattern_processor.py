@@ -7,6 +7,7 @@ from typing import List, Any, Tuple
 from src.file_ops import openfile, copy_and_rename
 from src.utils import get_repeat_cnt, cmp, check_in_range, check_in_same_range, get_all_files
 from src.atp_handler import find_pin_index
+from src.logger import Logger
 
 def remove_opcode(something: str, user_string: str) -> str:
     """Remove specified opcode from ATP file"""
@@ -180,10 +181,102 @@ def merge_instrument_declare(temp_file: str) -> None:
             for line in body_lines:
                 f.write(line)
 
-def edit_pattern(textoutwin: Any, pin_name: str, something: str, cycle_range: List,
+# ============================================================================
+# Mode handler helper functions (extracted from edit_pattern)
+# ============================================================================
+
+class _PatternEditError(Exception):
+    """Raised when a pattern editing error requires aborting the current file."""
+    pass
+
+
+def _validate_and_modify_pin_data(line_list: List, index: List[int], 
+                                   invalid_values: List[str], replacement: str,
+                                   mode_label: str, line_index: int, logger: Logger) -> List:
+    """Validate pin data and replace with target character.
+    
+    Shared logic for DSSC Capture, DSSC Source, and CMEM/HRAM Capture modes.
+    All three do: find pin data -> validate it's not invalid -> replace with target char.
+    
+    Raises:
+        _PatternEditError: If invalid pin data is found
+    """
+    for k in index:
+        try:
+            start_index = line_list.index(">")
+        except Exception as e:
+            logger.error(f"'>' is not in list, {e} ")
+            raise _PatternEditError()
+        
+        pin_data = line_list[start_index + 1 + k + 1]
+        if pin_data in invalid_values:
+            logger.error(f"{pin_data} data found in {mode_label}, line {line_index}, and pin data index {k}")
+            raise _PatternEditError()
+        else:
+            line_list[start_index + 1 + k + 1] = replacement
+    
+    return line_list
+
+
+def _apply_dssc_capture(line: str, line_list: List, index: List[int], 
+                         pin_name_ori: str, line_index: int, logger: Logger) -> str:
+    """Apply DSSC Capture mode: replace pin data with 'V' and add DigCap Store prefix."""
+    line_list = _validate_and_modify_pin_data(
+        line_list, index, ['0', '1', 'X'], 'V', 'DigCap', line_index, logger)
+    return "(({0}):DigCap = Store) ".format(pin_name_ori) + " ".join(line_list) + "\n"
+
+
+def _apply_dssc_source(line: str, line_list: List, index: List[int],
+                        pin_name_ori: str, line_index: int, logger: Logger) -> str:
+    """Apply DSSC Source mode: replace pin data with 'D' and add DigSrc Send prefix."""
+    line_list = _validate_and_modify_pin_data(
+        line_list, index, ['H', 'L'], 'D', 'DigSrc', line_index, logger)
+    return "(({0}):DigSrc = Send) ".format(pin_name_ori) + " ".join(line_list) + "\n"
+
+
+def _apply_cmem_capture(line: str, line_list: List, index: List[int],
+                         pin_name_ori: str, line_index: int, logger: Logger,
+                         repeat_cnt: int) -> str:
+    """Apply CMEM/HRAM Capture mode: replace pin data with 'V' and add stv prefix."""
+    line_list = _validate_and_modify_pin_data(
+        line_list, index, ['0', '1', 'X'], 'V', 'Cap', line_index, logger)
+    if repeat_cnt == 1:
+        return "stv\t" + " ".join(line_list) + "\n"
+    else:
+        return " ".join(line_list).replace('repeat', 'stv,repeat') + "\n"
+
+
+def _write_instrument_header(new_atp_file, mode: str, pin_name: str, pin_name_ori: str) -> None:
+    """Write instrument declaration block after import line, based on editing mode."""
+    pin_name_list = pin_name.split(',')
+    if mode == 'DSSC Capture':
+        new_atp_file.write("\n")
+        new_atp_file.write("instruments = {\n")
+        new_atp_file.write(
+            "({0}):DigCap {1}:auto_trig_enable;\n".format(pin_name_ori, len(pin_name_list)))
+        new_atp_file.write("}\n")
+    elif mode == 'DSSC Source':
+        new_atp_file.write("\n")
+        new_atp_file.write("instruments = {\n")
+        new_atp_file.write(
+            "({0}):DigSrc {1};\n".format(pin_name_ori, len(pin_name_list)))
+        new_atp_file.write("}\n")
+    elif mode == 'Add Opcode':
+        new_atp_file.write("\n")
+        if pin_name != '':
+            new_atp_file.write("instruments = {\n")
+            for pin in pin_name_list:
+                new_atp_file.write("{0}:DCVS 1;\n".format(pin))
+            new_atp_file.write("}\n")
+
+
+def edit_pattern(logger: Logger, pin_name: str, something: str, cycle_range: List,
                 mode: str, timemode: str, index_mode: str, user_string: str = '', 
                 pin_name_ori: str = "") -> str:
-    """Edit ATP pattern file according to specified mode and parameters"""
+    """Edit ATP pattern file according to specified mode and parameters.
+    
+    Dispatches to mode-specific handler functions for the actual pattern modifications.
+    """
     # Track if any errors occurred during processing
     has_errors = False
 
@@ -193,6 +286,7 @@ def edit_pattern(textoutwin: Any, pin_name: str, something: str, cycle_range: Li
 
     otherthing = os.path.join(output_path, os.path.basename(something))
 
+    # Simple modes that don't need line-by-line processing
     if mode == 'Expand Pattern':
         remove_repeat_file = remove_repeat(something, timemode)
         copy_and_rename(remove_repeat_file, otherthing)
@@ -214,6 +308,7 @@ def edit_pattern(textoutwin: Any, pin_name: str, something: str, cycle_range: Li
             os.remove(remove_opcode_file)
         return otherthing
 
+    # Complex modes that require line-by-line processing
     line_index = 0
     cycle_num = 0
     repeat_cnt = 0
@@ -240,38 +335,14 @@ def edit_pattern(textoutwin: Any, pin_name: str, something: str, cycle_range: Li
                     if line.find(r">") == -1:
                         if line[0:12] == "import tset " or line[0:22] == 'import_all_undefineds ':
                             new_atp_file.write(line)
-
-                            if mode == 'DSSC Capture':
-                                pin_name_list = pin_name.split(',')
-                                new_atp_file.write("\n")
-                                new_atp_file.write("instruments = {\n")
-                                new_atp_file.write(
-                                    "({0}):DigCap {1}:auto_trig_enable;\n".format(pin_name_ori, len(pin_name_list)))
-                                new_atp_file.write("}\n")
-                            elif mode == 'DSSC Source':
-                                pin_name_list = pin_name.split(',')
-                                new_atp_file.write("\n")
-                                new_atp_file.write("instruments = {\n")
-                                new_atp_file.write(
-                                    "({0}):DigSrc {1};\n".format(pin_name_ori, len(pin_name_list)))
-                                new_atp_file.write("}\n")
-                            elif mode == 'Add Opcode':
-                                new_atp_file.write("\n")
-                                if pin_name != '':
-                                    pin_name_list = pin_name.split(',')
-                                    new_atp_file.write("instruments = {\n")
-                                    for pin in pin_name_list:
-                                        new_atp_file.write(
-                                            "{0}:DCVS 1;\n".format(pin))
-                                    new_atp_file.write("}\n")
+                            _write_instrument_header(new_atp_file, mode, pin_name, pin_name_ori)
 
                         elif line.find("$tset") != -1:
-                            index = find_pin_index(mode, pin_name, line, textoutwin)
+                            index = find_pin_index(mode, pin_name, line, logger)
                             if 0 in index:
-                                textoutwin('Error: Cannot find pinname')
-                                print('Error: Cannot find pinname')
+                                logger.error('Cannot find pinname')
                                 has_errors = True
-                                return something  # Return original file path to indicate error
+                                return something
                             new_atp_file.write(line)
 
                         else:
@@ -300,7 +371,7 @@ def edit_pattern(textoutwin: Any, pin_name: str, something: str, cycle_range: Li
                         if (cycle_num == 1) and (mode == 'DSSC Source'):
                             line = "(({0}):DigSrc = Start DSSCSrcSig)".format(pin_name_ori) + line
 
-                        # Add wflag setup
+                        # Add wflag setup opcodes
                         if mode == 'WFLAG':
                             if cycle_num == 0:
                                 line = 'branch_expr = (!cpuA_cond)\t' + line
@@ -313,128 +384,44 @@ def edit_pattern(textoutwin: Any, pin_name: str, something: str, cycle_range: Li
                             if check_in_range(cycle_num + 1, cycle_range):
                                 line = 'set_cpu_cond (cpuA_cond)\t' + line
 
+                        # Apply mode-specific modifications to lines in the cycle range
                         if cycle_num in cycle_range:
-                            if mode == 'DSSC Capture':
-                                if repeat_cnt == 1:
-                                    line_list = line.split()
-                                    for k in index:
-                                        try:
-                                            start_index = line_list.index(">")
-                                        except Exception as e:
-                                            textoutwin(f"Error: '>' is not in list, {e} ")
-                                            print(f"Error: '>' is not in list, {e} ")
-                                            has_errors = True
-                                            return something  # Return original file path to indicate error
-                                        if line_list[start_index + 1 + k + 1] == '0' or line_list[start_index + 1 + k + 1] == '1':
-                                            textoutwin("Error: Drive data found in DigCap, line " + str(line_index) + ", and pin data index " + str(k))
-                                            print("Error: Drive data found in DigCap, line " + str(line_index) + ", and pin data index " + str(k))
-                                            has_errors = True
-                                            return something  # Return original file path to indicate error
-                                        elif line_list[start_index + 1 + k + 1] == 'X':
-                                            textoutwin("Error: ""X"" data found in DigCap, line " + str(
-                                                line_index) + ", and pin data index " + str(k))
-                                            print("Error: ""X"" data found in DigCap, line " + str(
-                                                line_index) + ", and pin data index " + str(k))
-                                            has_errors = True
-                                            return something  # Return original file path to indicate error
-                                        else:
-                                            line_list[start_index + 1 + k + 1] = "V"
-                                    line = "(({0}):DigCap = Store) ".format(pin_name_ori) + " ".join(line_list) + "\n"
-                                else:
-                                    cycle_num_list = [cycle_num, cycle_num + repeat_cnt - 1]
-                                    if check_in_same_range(cycle_num_list, cycle_range):
-                                        line_list = line.split()
-                                        for k in index:
-                                            start_index = line_list.index(">")
-                                            if line_list[start_index + 1 + k + 1] == '0' or line_list[start_index + 1 + k + 1] == '1':
-                                                textoutwin("Error: Drive data found in DigCap, line " + str(line_index) + ", and pin data index " + str(k))
-                                                print("Error: Drive data found in DigCap, line " + str(line_index) + ", and pin data index " + str(k))
-                                                has_errors = True
-                                                return something  # Return original file path to indicate error
-                                            elif line_list[start_index + 1 + k + 1] == 'X':
-                                                textoutwin("Error: ""X"" data found in DigCap, line " + str(
-                                                    line_index) + ", and pin data index " + str(k))
-                                                print("Error: ""X"" data found in DigCap, line " + str(
-                                                    line_index) + ", and pin data index " + str(k))
-                                                has_errors = True
-                                                return something  # Return original file path to indicate error
-                                            else:
-                                                line_list[start_index + 1 + k + 1] = "V"
-                                        line = "(({0}):DigCap = Store) ".format(pin_name_ori) + " ".join(line_list) + "\n"
+                            try:
+                                if mode == 'DSSC Capture':
+                                    if repeat_cnt == 1:
+                                        line = _apply_dssc_capture(line, line.split(), index, pin_name_ori, line_index, logger)
+                                    else:
+                                        cycle_num_list = [cycle_num, cycle_num + repeat_cnt - 1]
+                                        if check_in_same_range(cycle_num_list, cycle_range):
+                                            line = _apply_dssc_capture(line, line.split(), index, pin_name_ori, line_index, logger)
 
-                            elif mode == 'DSSC Source':
-                                if repeat_cnt == 1:
-                                    line_list = line.split()
-                                    for k in index:
-                                        start_index = line_list.index(">")
-                                        if line_list[start_index + 1 + k + 1] == 'H' or line_list[start_index + 1 + k + 1] == 'L':
-                                            textoutwin("Error: Compare data found in DigSrc, line " + str(line_index) + ", and pin data index " + str(k))
-                                            print("Error: Compare data found in DigSrc, line " + str(line_index) + ", and pin data index " + str(k))
-                                            has_errors = True
-                                            return something  # Return original file path to indicate error
-                                        else:
-                                            line_list[start_index + 1 + k + 1] = "D"
-                                    line = "(({0}):DigSrc = Send) ".format(pin_name_ori) + " ".join(line_list) + "\n"
-                                else:
-                                    cycle_num_list = [cycle_num, cycle_num + repeat_cnt - 1]
-                                    if check_in_same_range(cycle_num_list, cycle_range):
-                                        line_list = line.split()
-                                        for k in index:
-                                            start_index = line_list.index(">")
-                                            if line_list[start_index + 1 + k + 1] == 'H' or line_list[start_index + 1 + k + 1] == 'L':
-                                                textoutwin("Error: Compare data found in DigSrc, line " + str(line_index) + ", and pin data index " + str(k))
-                                                print("Error: Compare data found in DigSrc, line " + str(line_index) + ", and pin data index " + str(k))
-                                                has_errors = True
-                                                return something  # Return original file path to indicate error
-                                            else:
-                                                line_list[start_index + 1 + k + 1] = "D"
-                                        line = "(({0}):DigSrc = Send) ".format(pin_name_ori) + " ".join(line_list) + "\n"
+                                elif mode == 'DSSC Source':
+                                    if repeat_cnt == 1:
+                                        line = _apply_dssc_source(line, line.split(), index, pin_name_ori, line_index, logger)
+                                    else:
+                                        cycle_num_list = [cycle_num, cycle_num + repeat_cnt - 1]
+                                        if check_in_same_range(cycle_num_list, cycle_range):
+                                            line = _apply_dssc_source(line, line.split(), index, pin_name_ori, line_index, logger)
 
-                            elif mode == 'CMEM/HRAM Capture':
-                                if repeat_cnt == 1:
-                                    line_list = line.split()
-                                    for k in index:
-                                        start_index = line_list.index(">")
-                                        if line_list[start_index + 1 + k + 1] == '0' or line_list[start_index + 1 + k + 1] == '1':
-                                            textoutwin("Error: Drive data found in Cap, line " + str(line_index) + ", and pin data index " + str(k))
-                                            print("Error: Drive data found in Cap, line " + str(line_index) + ", and pin data index " + str(k))
-                                            has_errors = True
-                                            return something  # Return original file path to indicate error
-                                        elif line_list[start_index + 1 + k + 1] == 'X':
-                                            textoutwin("Error: ""X"" data found in Cap, line " + str(line_index) + ", and pin data index " + str(k))
-                                            print("Error: ""X"" data found in Cap, line " + str(line_index) + ", and pin data index " + str(k))
-                                            has_errors = True
-                                            return something  # Return original file path to indicate error
-                                        else:
-                                            line_list[start_index + 1 + k + 1] = "V"
-                                    line = "stv\t" + " ".join(line_list) + "\n"
-                                else:
-                                    cycle_num_list = [cycle_num, cycle_num + repeat_cnt - 1]
-                                    if check_in_same_range(cycle_num_list, cycle_range):
-                                        line_list = line.split()
-                                        for k in index:
-                                            start_index = line_list.index(">")
-                                            if line_list[start_index + 1 + k + 1] == '0' or line_list[start_index + 1 + k + 1] == '1':
-                                                textoutwin("Error: Drive data found in Cap, line " + str(line_index) + ", and pin data index " + str(k))
-                                                print("Error: Drive data found in Cap, line " + str(line_index) + ", and pin data index " + str(k))
-                                                has_errors = True
-                                                return something  # Return original file path to indicate error
-                                            elif line_list[start_index + 1 + k + 1] == 'X':
-                                                textoutwin("Error: ""X"" data found in Cap, line " + str(line_index) + ", and pin data index " + str(k))
-                                                print("Error: ""X"" data found in Cap, line " + str(line_index) + ", and pin data index " + str(k))
-                                                has_errors = True
-                                                return something  # Return original file path to indicate error
-                                            else:
-                                                line_list[start_index + 1 + k + 1] = "V"
-                                        line = " ".join(line_list).replace('repeat', 'stv,repeat') + "\n"
+                                elif mode == 'CMEM/HRAM Capture':
+                                    if repeat_cnt == 1:
+                                        line = _apply_cmem_capture(line, line.split(), index, pin_name_ori, line_index, logger, repeat_cnt)
+                                    else:
+                                        cycle_num_list = [cycle_num, cycle_num + repeat_cnt - 1]
+                                        if check_in_same_range(cycle_num_list, cycle_range):
+                                            line = _apply_cmem_capture(line, line.split(), index, pin_name_ori, line_index, logger, repeat_cnt)
 
-                            elif mode == 'WFLAG':
-                                if repeat_cnt == 1:
-                                    line = 'wflag\t' + line
+                                elif mode == 'WFLAG':
+                                    if repeat_cnt == 1:
+                                        line = 'wflag\t' + line
 
-                            elif mode == 'Add Opcode':
-                                if repeat_cnt == 1:
-                                    line = user_string + '\t' + line
+                                elif mode == 'Add Opcode':
+                                    if repeat_cnt == 1:
+                                        line = user_string + '\t' + line
+
+                            except _PatternEditError:
+                                has_errors = True
+                                return something
 
                         new_atp_file.write(line)
 
@@ -445,20 +432,18 @@ def edit_pattern(textoutwin: Any, pin_name: str, something: str, cycle_range: Li
 
                     if len(line) == 0:
                         if cycle_num < last_cycle_num:
-                            textoutwin('Error: The cycle you specified exceeds the total number of cycles in the pattern: ' + something)
-                            print('Error: The cycle you specified exceeds the total number of cycles in the pattern: ' + something)
+                            logger.error('The cycle you specified exceeds the total number of cycles in the pattern: ' + something)
                             has_errors = True
-                            return something  # Return original file path to indicate error
+                            return something
                         break
 
             if os.path.exists(remove_repeat_file):
                 if index_mode == 'Cycle':
                     os.remove(remove_repeat_file)
             else:
-                textoutwin("Error: The file " + remove_repeat_file + " does not exist")
-                print("Error: The file " + remove_repeat_file + " does not exist")
+                logger.error("The file " + remove_repeat_file + " does not exist")
                 has_errors = True
-                return something  # Return original file path to indicate error
+                return something
 
         # Only rename temp file to final output if no errors occurred
         if not has_errors:
@@ -470,24 +455,27 @@ def edit_pattern(textoutwin: Any, pin_name: str, something: str, cycle_range: Li
                 if os.path.exists(otherthing):
                     os.remove(otherthing)
                 os.rename(temp_file, otherthing)
-                textoutwin("Info: Done conversion: " + something)
-                print("Info: Done conversion: " + something)
+                logger.info("Done conversion: " + something)
                 return otherthing
         else:
             if os.path.exists(temp_file):
                 os.remove(temp_file)
             return something
 
+    except _PatternEditError:
+        has_errors = True
+        if temp_file and os.path.exists(temp_file):
+            os.remove(temp_file)
+        return something
     except Exception as e:
-        textoutwin(f"Error: An unexpected error occurred: {str(e)}")
-        print(f"Error: An unexpected error occurred: {str(e)}")
+        logger.error(f"An unexpected error occurred: {str(e)}")
         if temp_file and os.path.exists(temp_file):
             os.remove(temp_file)
         return something
 
     return something  # Return original file path if we somehow get here
 
-def extract_cycle_on_keyword(fileFolder: str, keyword: str, textoutwin):
+def extract_cycle_on_keyword(fileFolder: str, keyword: str, logger: Logger):
     """Extract cycle_on keyword from ATP files."""
     resultDict = {}
     resylt_list = get_all_files(fileFolder, ".atp")
@@ -511,8 +499,7 @@ def extract_cycle_on_keyword(fileFolder: str, keyword: str, textoutwin):
                     if len(line) == 0:
                         break
         except Exception as e:
-            textoutwin(f"Error: An unexpected error occurred: {str(e)}")
-            print(f"Error: An unexpected error occurred: {str(e)}")
+            logger.error(f"An unexpected error occurred: {str(e)}")
             if removeRepeatFile and os.path.exists(removeRepeatFile):
                 os.remove(removeRepeatFile)
 
@@ -526,8 +513,7 @@ def extract_cycle_on_keyword(fileFolder: str, keyword: str, textoutwin):
         for key, value in resultDict.items():
             cycleContent = ';'.join(['[' + str(x) + '-' + str(x) + ']' for x in value])
             writer.writerow([key, cycleContent])
-    textoutwin(f"Info: Extraction done.")
-    print(f"Info: Extraction done.")
+    logger.info("Extraction done.")
 
 
 if __name__ == '__main__':

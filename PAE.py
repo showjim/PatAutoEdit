@@ -16,13 +16,14 @@ from multiprocessing import Pool, Manager
 from src.atp_handler import read_csv, read_pinmap, analyse_merge_config
 from src.pattern_processor import edit_pattern, extract_cycle_on_keyword
 from src.utils import in_list
-from src.main import main4, main11
+from src.main import process_atp_classical, process_atp_simple
+from src.logger import Logger
 
 multiprocessing.freeze_support()
 
 version = 'V1.13.8'
 
-class DemoClass(tk.Tk):
+class PatAutoEditApp(tk.Tk):
 
     def __init__(self):
         super().__init__()  # 有点相当于tk.Tk()
@@ -31,6 +32,7 @@ class DemoClass(tk.Tk):
         self.createWidgets()
         self.Pinmapfilename = [] #""
         self.FileFolder = ''
+        self.logger = Logger(gui_callback=self.put_data_log)
 
     def createWidgets(self):
         self.title('Pattern Auto Edit Tool ' + version)
@@ -137,16 +139,16 @@ class DemoClass(tk.Tk):
         self.check_box4.grid(row=5, column=1, sticky='E')
 
         # Step 6, button
-        self.btn = tk.Button(topframe, text='Generate', command=self.SayHello_MultProcess)
+        self.btn = tk.Button(topframe, text='Generate', command=self.run_classical_multiprocess)
         self.btn.grid(row=7, column=0, columnspan=2)
 
         # Step 7. Label Name Entry
-        self.ety2 = tk.Entry(topframe, width=40)
-        self.ety2.grid(row=3, column=1)
+        self.ety_user_string = tk.Entry(topframe, width=40)
+        self.ety_user_string.grid(row=3, column=1)
 
         self.contents7 = StringVar()
         self.contents7.set("Please Enter the User String")
-        self.ety2.config(textvariable=self.contents7)
+        self.ety_user_string.config(textvariable=self.contents7)
 
         # Step 8. Please choose index mode
         self.check_box_Label = ttk.Label(topframe, text='Index Mode:\t\t')
@@ -206,7 +208,7 @@ class DemoClass(tk.Tk):
         self.ety4_simple.config(textvariable=self.contents4_simple)
 
         # Step 6, button
-        self.btn_simple = tk.Button(topframe_simple, text='Generate', command=self.SayHello_simple)
+        self.btn_simple = tk.Button(topframe_simple, text='Generate', command=self.run_simple)
         self.btn_simple.grid(row=6, column=0, columnspan=2)
 
         # Utils Tab
@@ -230,7 +232,7 @@ class DemoClass(tk.Tk):
         self.ety2_utils.config(textvariable=self.contents2_utils)
 
         # Step 6, Run button
-        self.btn_simple = tk.Button(topframe_utils, text='Generate', command=self.SayHello_utils)
+        self.btn_simple = tk.Button(topframe_utils, text='Generate', command=self.run_utils_extract)
         self.btn_simple.grid(row=2, column=0, columnspan=2)
 
 
@@ -267,68 +269,61 @@ class DemoClass(tk.Tk):
     def on_radiobox_changed(self):
         print(self.check_box_var1.get())
 
-    def SayHello(self):
+    def run_classical(self):
         ATPFile = self.ATPfilename
         CSVFile = self.CSVfilename
         PinName = self.ety.get()
         Mode = self.cmb.get()
         TimeMode = self.check_box_var2.get()
-        UserString = self.ety2.get()
+        UserString = self.ety_user_string.get()
         IndexMode = self.check_box_var1.get()
-        textout = self.put_data_log
         pinmap = self.Pinmapfilename
-        main4(ATPFile, CSVFile, PinName, Mode, TimeMode, UserString, IndexMode, textout, pinmap)
+        process_atp_classical(ATPFile, CSVFile, PinName, Mode, TimeMode, UserString, IndexMode, self.logger, pinmap)
 
-    def SayHello_simple(self):
+    def run_simple(self):
         ATPFile = self.ATPfilename
         CSVFile = self.CSVfilename
         pinmap = self.Pinmapfilename
-        textout = self.put_data_log
         if len(pinmap) > 0:
-            main11(ATPFile, CSVFile[0], textout, pinmap[0])
+            process_atp_simple(ATPFile, CSVFile[0], self.logger, pinmap[0])
         else:
-            main11(ATPFile, CSVFile[0], textout, "")
+            process_atp_simple(ATPFile, CSVFile[0], self.logger, "")
 
-    def single_item_post_process_simple(self, preFileName, tmpFileName, ATPFiles, textoutwin, Mode, CmbList, PinName,
+    def single_item_post_process_simple(self, preFileName, tmpFileName, ATPFiles, logger, Mode, CmbList, PinName,
                                         CycleRange, time_mode, IndexMode, UserString, result, j):
         if preFileName == tmpFileName:
             OutputPath = os.path.join(os.getcwd(), 'Output')
-            otherthing = os.path.join(OutputPath, os.path.basename(ATPFiles[j]))
-            shutil.copy(otherthing, ATPFiles[j])
+            prev_output_path = os.path.join(OutputPath, os.path.basename(ATPFiles[j]))
+            shutil.copy(prev_output_path, ATPFiles[j])
 
         if j >= 0:
-            textoutwin("Info: Start convert file: " + ATPFiles[j])
-            print("Info: start convert file: +" + ATPFiles[j])
+            logger.info("Start convert file: " + ATPFiles[j])
             if Mode in CmbList:
-                result_file = edit_pattern(textoutwin, PinName, ATPFiles[j], CycleRange, Mode, time_mode,
+                result_file = edit_pattern(logger, PinName, ATPFiles[j], CycleRange, Mode, time_mode,
                                           IndexMode, UserString)
                 preFileName = tmpFileName
                 if result_file not in result:
                     result.append(result_file)
             else:
-                textoutwin("Error: Wrong Choice !!!")
-                print("Error: Wrong Choice !!!")
-            textoutwin("Info: Done conversion")
-            print("Info: Done conversion")
+                logger.error("Wrong Choice !!!")
+            logger.info("Done conversion")
         else:
-            textoutwin("Warning: Cannot find atp file: " + tmpFileName)
-            print("Warning: Cannot find atp file: " + tmpFileName)
+            logger.warning("Cannot find atp file: " + tmpFileName)
 
         return preFileName
 
-    def SayHello_simple_MultProcess(self):
+    def run_simple_multiprocess(self):
         self.switchButtonState(self.btn_simple)
         ATPFiles = self.ATPfilename
         CSVFile = self.CSVfilename
         merge_config_file = CSVFile[0]
 
-        textoutwin = self.put_data_log
         self.queue = Manager().Queue()
         self.counter = Manager().Value('i', 0)
         self.pool = Pool(processes=4)  # max 4 processes
 
         try:
-            config_list = analyse_merge_config(merge_config_file, textoutwin)
+            config_list = analyse_merge_config(merge_config_file, self.logger)
 
             CmbList = ['DSSC Capture', 'DSSC Source', 'CMEM/HRAM Capture', 'Expand Pattern', 'Compress Pattern',
                        'WFLAG', 'Add Opcode', 'Remove Opcode']
@@ -336,6 +331,7 @@ class DemoClass(tk.Tk):
             preFileName = ""
             result = []
             self.total_tasks = 0
+            mp_logger = Logger(gui_callback=self.queue.put)
             for config_item in config_list:
                 tmpFileName = config_item["ATPFile"]
                 Mode = config_item["Mode"]
@@ -351,7 +347,7 @@ class DemoClass(tk.Tk):
                 j = in_list(tmpFileName, ATPFiles)
                 self.total_tasks += 1
                 self.pool.apply_async(self.single_item_post_process_simple,
-                                      args=(preFileName, tmpFileName, ATPFiles, textoutwin, Mode, CmbList, PinName,
+                                      args=(preFileName, tmpFileName, ATPFiles, mp_logger, Mode, CmbList, PinName,
                                             CycleRange, time_mode, IndexMode, UserString, result, j),
                                       callback=self.my_callback)
             self.after(500, self.update_progress)
@@ -360,7 +356,7 @@ class DemoClass(tk.Tk):
             self.put_data_log(error_msg)
             self.switchButtonState(self.btn)
 
-    def SayHello_MultProcess(self):
+    def run_classical_multiprocess(self):
         self.switchButtonState(self.btn)
 
         ATPFiles = self.ATPfilename
@@ -368,9 +364,8 @@ class DemoClass(tk.Tk):
         PinName = self.ety.get()
         Mode = self.cmb.get()
         TimeMode = self.check_box_var2.get()
-        UserString = self.ety2.get()
+        UserString = self.ety_user_string.get()
         IndexMode = self.check_box_var1.get()
-        textoutwin = self.put_data_log
         PinMap = self.Pinmapfilename
 
         self.queue = Manager().Queue()
@@ -391,41 +386,37 @@ class DemoClass(tk.Tk):
                 timemode = '2'
             CycleRanges = []
             if len(CSVFiles) > 1:
-                textoutwin("Error: Only ONE CSV file supported !!!")
-                print("Error: Only ONE CSV file supported !!!")
+                self.logger.error("Only ONE CSV file supported !!!")
                 return
             CycleRanges = read_csv(CSVFiles[0])
 
+            mp_logger = Logger(gui_callback=self.queue.put)
             self.total_tasks = 0
             for key in CycleRanges.keys():
                 tmpFileName = key
                 j = in_list(tmpFileName, ATPFiles)
                 if j >= 0:
-                    textoutwin("Info: Start convert file: " + ATPFiles[j])
-                    print("Info: start convert file: +" + ATPFiles[j])
+                    self.logger.info("Start convert file: " + ATPFiles[j])
                     if Mode in CmbList:
                         self.total_tasks += 1
                         self.pool.apply_async(edit_pattern, args=(
-                            self.queue.put, PinName, ATPFiles[j], CycleRanges[key], Mode, timemode, IndexMode,
+                            mp_logger, PinName, ATPFiles[j], CycleRanges[key], Mode, timemode, IndexMode,
                             UserString, PinNameOri), callback=self.my_callback)
                     else:
-                        textoutwin("Error: Wrong Choice !!!")
-                        print("Error: Wrong Choice !!!")
+                        self.logger.error("Wrong Choice !!!")
                 else:
-                    textoutwin("Warning: Cannot find atp file: " + tmpFileName)
-                    print("Warning: Cannot find atp file: " + tmpFileName)
+                    self.logger.warning("Cannot find atp file: " + tmpFileName)
             self.after(500, self.update_progress)
         except Exception:
             error_msg = traceback.format_exc()
             self.put_data_log(error_msg)
             self.switchButtonState(self.btn)
 
-    def SayHello_utils(self):
+    def run_utils_extract(self):
         FileFolder = self.contents1_utils.get()
         Keyword = self.contents2_utils.get()
-        textout = self.put_data_log
 
-        extract_cycle_on_keyword(FileFolder, Keyword, textout)
+        extract_cycle_on_keyword(FileFolder, Keyword, self.logger)
 
     def my_callback(self, result):
         self.counter.value += 1
@@ -498,6 +489,6 @@ class MyMenu():
 
 
 if __name__ == '__main__':
-    win = DemoClass()
+    win = PatAutoEditApp()
     win.addmenu(MyMenu)
     win.mainloop()

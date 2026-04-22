@@ -17,8 +17,7 @@ def openfile(filename, mode='r'):
         return open(filename, mode)
 
 def copy_and_rename(src_path, dest_path):
-    """Copy and rename a file"""
-    shutil.copy(src_path, dest_path)
+    """Move/rename a file from src to dest (overwrites dest if exists)"""
     shutil.move(src_path, dest_path)
 
 def get_all_files_list(source_dir, exts):
