@@ -61,6 +61,17 @@ class PatAutoEditApp(tk.Tk):
         notebook.add(topframe_simple, text='Simplified')
         notebook.add(topframe_utils, text='Utils')
 
+        # Hide Classical tab by default; unlock by clicking version label 4 times
+        self._notebook = notebook
+        self._topframe = topframe
+        self._classic_click_count = 0
+        notebook.hide(topframe)
+
+        # Version label in top-right corner acts as the secret click target
+        version_label = tk.Label(self, text=version, fg='gray', cursor='arrow')
+        version_label.place(relx=1.0, rely=0.0, anchor='ne', x=-6, y=4)
+        version_label.bind('<Button-1>', self._on_version_click)
+
         # Step 1. Please enter ATP file path and name:
         self.ety2 = tk.Entry(topframe, width=40)
         self.ety2.grid(row=0, column=0)
@@ -371,6 +382,13 @@ class PatAutoEditApp(tk.Tk):
         else:
             button['state'] = tk.NORMAL
 
+    def _on_version_click(self, event=None):
+        self._classic_click_count += 1
+        if self._classic_click_count >= 4:
+            self._classic_click_count = 0
+            self._notebook.insert(0, self._topframe, text='Classical')
+            self._notebook.select(self._topframe)
+
     def CallATPFile(self, contents2):
         self.ATPfilename = tk.filedialog.askopenfilenames(
             filetypes=[('ATP File', '*.atp;*.atp.gz'), ("all", "*.*")])
@@ -420,7 +438,7 @@ class MyMenu():
     def help_about(self):
         messagebox.showinfo(
             'About',
-            'Author：Chao Zhou \n verion ' + version + '\n 感谢您的使用！ \n chao.zhou@teradyne.com ')
+            'Author：Chao Zhou \n verion ' + version + '\n 感谢您的使用！ \n zhouchao486@gmail.com ')
 
 
 if __name__ == '__main__':
