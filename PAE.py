@@ -13,16 +13,17 @@ import multiprocessing, shutil, os
 from multiprocessing import Pool, Manager
 
 # Import from new modular structure
-from src.atp_handler import read_csv, read_pinmap, analyse_merge_config
+from src.atp_handler import read_csv, read_pinmap, analyse_merge_config, build_config_from_classical
 from src.pattern_processor import edit_pattern, extract_cycle_on_keyword
 from src.utils import in_list
-from src.main import main4, main11
+from src.main import process_atp_classical, process_atp_simple, dispatch_config_parallel
+from src.logger import Logger
 
 multiprocessing.freeze_support()
 
-version = 'V1.13.8'
+version = 'V1.14.1'
 
-class DemoClass(tk.Tk):
+class PatAutoEditApp(tk.Tk):
 
     def __init__(self):
         super().__init__()  # 有点相当于tk.Tk()
@@ -31,6 +32,7 @@ class DemoClass(tk.Tk):
         self.createWidgets()
         self.Pinmapfilename = [] #""
         self.FileFolder = ''
+        self.logger = Logger(gui_callback=self.put_data_log)
 
     def createWidgets(self):
         self.title('Pattern Auto Edit Tool ' + version)
@@ -58,6 +60,17 @@ class DemoClass(tk.Tk):
         notebook.add(topframe, text='Classical')
         notebook.add(topframe_simple, text='Simplified')
         notebook.add(topframe_utils, text='Utils')
+
+        # Hide Classical tab by default; unlock by clicking version label 4 times
+        self._notebook = notebook
+        self._topframe = topframe
+        self._classic_click_count = 0
+        notebook.hide(topframe)
+
+        # Version label in top-right corner acts as the secret click target
+        version_label = tk.Label(self, text=version, fg='gray', cursor='arrow')
+        version_label.place(relx=1.0, rely=0.0, anchor='ne', x=-6, y=4)
+        version_label.bind('<Button-1>', self._on_version_click)
 
         # Step 1. Please enter ATP file path and name:
         self.ety2 = tk.Entry(topframe, width=40)
@@ -137,16 +150,16 @@ class DemoClass(tk.Tk):
         self.check_box4.grid(row=5, column=1, sticky='E')
 
         # Step 6, button
-        self.btn = tk.Button(topframe, text='Generate', command=self.SayHello_MultProcess)
+        self.btn = tk.Button(topframe, text='Generate', command=self.run_classical_multiprocess)
         self.btn.grid(row=7, column=0, columnspan=2)
 
         # Step 7. Label Name Entry
-        self.ety2 = tk.Entry(topframe, width=40)
-        self.ety2.grid(row=3, column=1)
+        self.ety_user_string = tk.Entry(topframe, width=40)
+        self.ety_user_string.grid(row=3, column=1)
 
         self.contents7 = StringVar()
         self.contents7.set("Please Enter the User String")
-        self.ety2.config(textvariable=self.contents7)
+        self.ety_user_string.config(textvariable=self.contents7)
 
         # Step 8. Please choose index mode
         self.check_box_Label = ttk.Label(topframe, text='Index Mode:\t\t')
@@ -206,7 +219,7 @@ class DemoClass(tk.Tk):
         self.ety4_simple.config(textvariable=self.contents4_simple)
 
         # Step 6, button
-        self.btn_simple = tk.Button(topframe_simple, text='Generate', command=self.SayHello_simple)
+        self.btn_simple = tk.Button(topframe_simple, text='Generate', command=self.run_simple_multiprocess)
         self.btn_simple.grid(row=6, column=0, columnspan=2)
 
         # Utils Tab
@@ -230,7 +243,7 @@ class DemoClass(tk.Tk):
         self.ety2_utils.config(textvariable=self.contents2_utils)
 
         # Step 6, Run button
-        self.btn_simple = tk.Button(topframe_utils, text='Generate', command=self.SayHello_utils)
+        self.btn_simple = tk.Button(topframe_utils, text='Generate', command=self.run_utils_extract)
         self.btn_simple.grid(row=2, column=0, columnspan=2)
 
 
@@ -267,171 +280,95 @@ class DemoClass(tk.Tk):
     def on_radiobox_changed(self):
         print(self.check_box_var1.get())
 
-    def SayHello(self):
-        ATPFile = self.ATPfilename
-        CSVFile = self.CSVfilename
-        PinName = self.ety.get()
-        Mode = self.cmb.get()
-        TimeMode = self.check_box_var2.get()
-        UserString = self.ety2.get()
-        IndexMode = self.check_box_var1.get()
-        textout = self.put_data_log
-        pinmap = self.Pinmapfilename
-        main4(ATPFile, CSVFile, PinName, Mode, TimeMode, UserString, IndexMode, textout, pinmap)
-
-    def SayHello_simple(self):
+    def run_simple(self):
+        """Single-process fallback for the Simplified tab (kept for quick tests)."""
         ATPFile = self.ATPfilename
         CSVFile = self.CSVfilename
         pinmap = self.Pinmapfilename
-        textout = self.put_data_log
         if len(pinmap) > 0:
-            main11(ATPFile, CSVFile[0], textout, pinmap[0])
+            process_atp_simple(ATPFile, CSVFile[0], self.logger, pinmap[0])
         else:
-            main11(ATPFile, CSVFile[0], textout, "")
+            process_atp_simple(ATPFile, CSVFile[0], self.logger, "")
 
-    def single_item_post_process_simple(self, preFileName, tmpFileName, ATPFiles, textoutwin, Mode, CmbList, PinName,
-                                        CycleRange, time_mode, IndexMode, UserString, result, j):
-        if preFileName == tmpFileName:
-            OutputPath = os.path.join(os.getcwd(), 'Output')
-            otherthing = os.path.join(OutputPath, os.path.basename(ATPFiles[j]))
-            shutil.copy(otherthing, ATPFiles[j])
-
-        if j >= 0:
-            textoutwin("Info: Start convert file: " + ATPFiles[j])
-            print("Info: start convert file: +" + ATPFiles[j])
-            if Mode in CmbList:
-                result_file = edit_pattern(textoutwin, PinName, ATPFiles[j], CycleRange, Mode, time_mode,
-                                          IndexMode, UserString)
-                preFileName = tmpFileName
-                if result_file not in result:
-                    result.append(result_file)
-            else:
-                textoutwin("Error: Wrong Choice !!!")
-                print("Error: Wrong Choice !!!")
-            textoutwin("Info: Done conversion")
-            print("Info: Done conversion")
-        else:
-            textoutwin("Warning: Cannot find atp file: " + tmpFileName)
-            print("Warning: Cannot find atp file: " + tmpFileName)
-
-        return preFileName
-
-    def SayHello_simple_MultProcess(self):
-        self.switchButtonState(self.btn_simple)
+    def _start_parallel_run(self, button, config_list):
+        """Common plumbing to dispatch a config_list to a fresh multiprocessing pool."""
+        self.switchButtonState(button)
         ATPFiles = self.ATPfilename
-        CSVFile = self.CSVfilename
-        merge_config_file = CSVFile[0]
-
-        textoutwin = self.put_data_log
-        self.queue = Manager().Queue()
-        self.counter = Manager().Value('i', 0)
-        self.pool = Pool(processes=4)  # max 4 processes
-
-        try:
-            config_list = analyse_merge_config(merge_config_file, textoutwin)
-
-            CmbList = ['DSSC Capture', 'DSSC Source', 'CMEM/HRAM Capture', 'Expand Pattern', 'Compress Pattern',
-                       'WFLAG', 'Add Opcode', 'Remove Opcode']
-
-            preFileName = ""
-            result = []
-            self.total_tasks = 0
-            for config_item in config_list:
-                tmpFileName = config_item["ATPFile"]
-                Mode = config_item["Mode"]
-                PinName = config_item["PinName"]
-                CycleRange = config_item["CycleRange"]
-                TimeMode = config_item["TimeMode"]
-                if TimeMode == 'Single':
-                    time_mode = '1'
-                elif TimeMode == 'Dual':
-                    time_mode = '2'
-                IndexMode = config_item["IndexMode"]
-                UserString = ""
-                j = in_list(tmpFileName, ATPFiles)
-                self.total_tasks += 1
-                self.pool.apply_async(self.single_item_post_process_simple,
-                                      args=(preFileName, tmpFileName, ATPFiles, textoutwin, Mode, CmbList, PinName,
-                                            CycleRange, time_mode, IndexMode, UserString, result, j),
-                                      callback=self.my_callback)
-            self.after(500, self.update_progress)
-        except Exception:
-            error_msg = traceback.format_exc()
-            self.put_data_log(error_msg)
-            self.switchButtonState(self.btn)
-
-    def SayHello_MultProcess(self):
-        self.switchButtonState(self.btn)
-
-        ATPFiles = self.ATPfilename
-        CSVFiles = self.CSVfilename
-        PinName = self.ety.get()
-        Mode = self.cmb.get()
-        TimeMode = self.check_box_var2.get()
-        UserString = self.ety2.get()
-        IndexMode = self.check_box_var1.get()
-        textoutwin = self.put_data_log
         PinMap = self.Pinmapfilename
+        pin_map_value = PinMap[0] if len(PinMap) > 0 else ""
 
         self.queue = Manager().Queue()
         self.counter = Manager().Value('i', 0)
         self.pool = Pool(processes=4)
 
         try:
-            PinNameOri = PinName
-            if len(PinMap) > 0:
-                pinrounp_dict = read_pinmap(PinMap[0])
-                if ("," not in PinName) and (PinName in pinrounp_dict.keys()):
-                    PinName = ",".join(pinrounp_dict[PinName])
-            CmbList = ['DSSC Capture', 'DSSC Source', 'CMEM/HRAM Capture', 'Expand Pattern', 'Compress Pattern',
-                       'WFLAG', 'Add Opcode', 'Remove Opcode']
-            if TimeMode == 'Single':
-                timemode = '1'
-            elif TimeMode == 'Dual':
-                timemode = '2'
-            CycleRanges = []
-            if len(CSVFiles) > 1:
-                textoutwin("Error: Only ONE CSV file supported !!!")
-                print("Error: Only ONE CSV file supported !!!")
+            mp_logger = Logger(gui_callback=self.queue.put)
+            self.active_button = button
+            self.total_tasks = dispatch_config_parallel(
+                self.pool, ATPFiles, config_list, mp_logger, pin_map_value, self.my_callback
+            )
+            if self.total_tasks == 0:
+                self.logger.warning("No tasks dispatched (check CSV / ATP file selection).")
+                self.switchButtonState(button)
                 return
-            CycleRanges = read_csv(CSVFiles[0])
-
-            self.total_tasks = 0
-            for key in CycleRanges.keys():
-                tmpFileName = key
-                j = in_list(tmpFileName, ATPFiles)
-                if j >= 0:
-                    textoutwin("Info: Start convert file: " + ATPFiles[j])
-                    print("Info: start convert file: +" + ATPFiles[j])
-                    if Mode in CmbList:
-                        self.total_tasks += 1
-                        self.pool.apply_async(edit_pattern, args=(
-                            self.queue.put, PinName, ATPFiles[j], CycleRanges[key], Mode, timemode, IndexMode,
-                            UserString, PinNameOri), callback=self.my_callback)
-                    else:
-                        textoutwin("Error: Wrong Choice !!!")
-                        print("Error: Wrong Choice !!!")
-                else:
-                    textoutwin("Warning: Cannot find atp file: " + tmpFileName)
-                    print("Warning: Cannot find atp file: " + tmpFileName)
             self.after(500, self.update_progress)
         except Exception:
             error_msg = traceback.format_exc()
             self.put_data_log(error_msg)
-            self.switchButtonState(self.btn)
+            self.switchButtonState(button)
 
-    def SayHello_utils(self):
+    def run_simple_multiprocess(self):
+        """Simplified tab Generate — parses multi-column CSV and dispatches in parallel."""
+        CSVFile = self.CSVfilename
+        if len(CSVFile) == 0:
+            self.logger.error("No CSV file selected !!!")
+            return
+        try:
+            config_list = analyse_merge_config(CSVFile[0], self.logger)
+        except Exception:
+            self.put_data_log(traceback.format_exc())
+            return
+        self._start_parallel_run(self.btn_simple, config_list)
+
+    def run_classical_multiprocess(self):
+        """Classical tab Generate — builds config list from 2-column CSV + GUI and dispatches in parallel."""
+        CSVFiles = self.CSVfilename
+        if len(CSVFiles) == 0:
+            self.logger.error("No CSV file selected !!!")
+            return
+        if len(CSVFiles) > 1:
+            self.logger.error("Only ONE CSV file supported !!!")
+            return
+
+        PinName = self.ety.get()
+        Mode = self.cmb.get()
+        TimeMode = self.check_box_var2.get()
+        IndexMode = self.check_box_var1.get()
+
+        CmbList = ['DSSC Capture', 'DSSC Source', 'CMEM/HRAM Capture', 'Expand Pattern', 'Compress Pattern',
+                   'WFLAG', 'Add Opcode', 'Remove Opcode']
+        if Mode not in CmbList:
+            self.logger.error("Wrong Choice !!!")
+            return
+
+        try:
+            config_list = build_config_from_classical(CSVFiles[0], Mode, PinName, TimeMode, IndexMode)
+        except Exception:
+            self.put_data_log(traceback.format_exc())
+            return
+        self._start_parallel_run(self.btn, config_list)
+
+    def run_utils_extract(self):
         FileFolder = self.contents1_utils.get()
         Keyword = self.contents2_utils.get()
-        textout = self.put_data_log
 
-        extract_cycle_on_keyword(FileFolder, Keyword, textout)
+        extract_cycle_on_keyword(FileFolder, Keyword, self.logger)
 
     def my_callback(self, result):
         self.counter.value += 1
         if self.counter.value == self.total_tasks:
             self.put_data_log("All tasks completed!!!")
-            self.switchButtonState(self.btn)
+            self.switchButtonState(self.active_button)
 
     def update_progress(self):
         if self.queue.empty() == False:
@@ -444,6 +381,13 @@ class DemoClass(tk.Tk):
             button['state'] = tk.DISABLED
         else:
             button['state'] = tk.NORMAL
+
+    def _on_version_click(self, event=None):
+        self._classic_click_count += 1
+        if self._classic_click_count >= 4:
+            self._classic_click_count = 0
+            self._notebook.insert(0, self._topframe, text='Classical')
+            self._notebook.select(self._topframe)
 
     def CallATPFile(self, contents2):
         self.ATPfilename = tk.filedialog.askopenfilenames(
@@ -494,10 +438,10 @@ class MyMenu():
     def help_about(self):
         messagebox.showinfo(
             'About',
-            'Author：Chao Zhou \n verion ' + version + '\n 感谢您的使用！ \n chao.zhou@teradyne.com ')
+            'Author：Chao Zhou \n verion ' + version + '\n 感谢您的使用！ \n zhouchao486@gmail.com ')
 
 
 if __name__ == '__main__':
-    win = DemoClass()
+    win = PatAutoEditApp()
     win.addmenu(MyMenu)
     win.mainloop()

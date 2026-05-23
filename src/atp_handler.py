@@ -7,22 +7,53 @@ import re
 from typing import Dict, List
 from src.file_ops import openfile
 from src.utils import process_input_cycles
+from src.logger import Logger
 csv.field_size_limit(100000000)
 
-def read_csv(something: str) -> Dict:
+def read_csv(input_path: str) -> Dict:
     """Read CSV file containing cycle ranges"""
     cycle_range = {}
-    with openfile(something) as f:
+    with openfile(input_path) as f:
         f_csv = csv.reader(f)
         for row in f_csv:
             if len(row) > 0:
-                if len(row[0]) or len(row[1]) > 0:
+                if len(row[0]) > 0 or len(row[1]) > 0:
                     cycle_range[row[0]] = process_input_cycles(row[1])
                 else:
                     break
             else:
                 break
     return cycle_range
+
+def build_config_from_classical(csv_file: str, mode: str, pin_name: str, 
+                                 time_mode: str, index_mode: str) -> List[Dict]:
+    """Convert classical 2-column CSV + GUI settings into standard config list.
+    
+    This adapter function allows the classical interface to use the same 
+    processing code path as the simplified interface (process_atp_simple).
+    
+    Args:
+        csv_file: Path to the 2-column CSV (filename, cycle_range)
+        mode: Processing mode from GUI (e.g., 'DSSC Capture')
+        pin_name: Pin name from GUI
+        time_mode: 'Single' or 'Dual' from GUI
+        index_mode: 'Cycle' or 'Vector' from GUI
+    
+    Returns:
+        List of config dicts in the same format as analyse_merge_config output
+    """
+    cycle_ranges = read_csv(csv_file)
+    config_list = []
+    for filename, cycles in cycle_ranges.items():
+        config_list.append({
+            "ATPFile": filename,
+            "CycleRange": cycles,
+            "Mode": mode,
+            "PinName": pin_name,
+            "TimeMode": time_mode,
+            "IndexMode": index_mode
+        })
+    return config_list
 
 def read_pinmap(pinmap_dir: str) -> Dict:
     """Read pin mapping file"""
@@ -41,7 +72,7 @@ def read_pinmap(pinmap_dir: str) -> Dict:
             line_cnt += 1
     return pin_dict
 
-def analyse_merge_config(merge_config_file: str, textoutwin) -> List[Dict]:
+def analyse_merge_config(merge_config_file: str, logger: Logger) -> List[Dict]:
     """Analyze merge configuration file"""
     config_list = []
     with openfile(merge_config_file) as f:
@@ -81,8 +112,7 @@ def analyse_merge_config(merge_config_file: str, textoutwin) -> List[Dict]:
                                 cur_config_dict["CycleRange"] = process_input_cycles(item)
                             except Exception as e:
                                 content = ",".join(row)
-                                textoutwin(f"Error: Cannot parse the cycle list, content: {content}")
-                                print(f"Error: Cannot parse the cycle list, content: {content}")
+                                logger.error(f"Cannot parse the cycle list, content: {content}")
                                 cur_config_dict["CycleRange"] = []
                             if "Pattern" not in item:
                                 tmp_dict = cur_config_dict.copy()
@@ -92,11 +122,11 @@ def analyse_merge_config(merge_config_file: str, textoutwin) -> List[Dict]:
                                 cur_config_dict["Mode"] = ""
                                 cur_config_dict["PinName"] = ""
             else:
-                textoutwin("Warning: NO CONFIG FOUND!!!")
+                logger.warning("NO CONFIG FOUND!!!")
                 break
     return config_list
 
-def find_pin_index(mode:str, pin_names: str, str_line: str, textoutwin) -> List[int]:
+def find_pin_index(mode:str, pin_names: str, str_line: str, logger: Logger) -> List[int]:
     """Find pin indices in line"""
     pin_name = pin_names.split(",")
     str_line = str_line.replace(' ', '')
@@ -111,6 +141,5 @@ def find_pin_index(mode:str, pin_names: str, str_line: str, textoutwin) -> List[
                 
     if (len(index) != len(pin_name)) and (mode not in ['WFLAG', 'Add Opcode']):
         index = []
-        textoutwin("Error: Cannot find all given pins")
-        print("Error: Cannot find all given pins")
+        logger.error("Cannot find all given pins")
     return index

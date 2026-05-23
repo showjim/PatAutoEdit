@@ -13,7 +13,7 @@ def cmp(a, b):
             tempa = str(a[i])
             commtindexa = tempa.find('//')
             tempb = str(b[i])
-            commtindexb = tempa.find('//')
+            commtindexb = tempb.find('//')
             if commtindexa > 0:
                 tempa = tempa[:commtindexa].strip()
             if commtindexb > 0:
