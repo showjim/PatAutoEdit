@@ -437,6 +437,16 @@ def _expand_module_repeats(module: _Module, records: List[_Record], trailing, ou
     loop_counters = {op.counter for rec in records for op in rec.ops if op.kind == 'loop'}
     _prepare_strip(records, ('repeat',), loop_counters)
 
+    # A body holding both set_msb and set cX gives cX new MSBs on each pass, so
+    # any repeat cX inside or after it depends on how many passes ran. This
+    # pass reads each body once and cannot follow that; Expand Loop can.
+    msb_bodies = []
+    for start, end, _ in bodies:
+        kinds = [op for r in records[start:end + 1] for op in r.ops]
+        if any(op.kind == 'set_msb' for op in kinds):
+            msb_bodies.append((start, records[start].line_no,
+                               {op.counter for op in kinds if op.kind == 'set'}))
+
     out.writelines(module.header)
     counters = _Counters()
     for i, rec in enumerate(records):
@@ -454,6 +464,11 @@ def _expand_module_repeats(module: _Module, records: List[_Record], trailing, ou
                 c = op.counter
                 if any(body[2] == c for body in enclosing):
                     raise ExpandError(rec.line_no, f'repeat c{c} inside a loop counting on c{c}')
+                for start, body_line, sets in msb_bodies:
+                    if start <= i and c in sets:
+                        raise ExpandError(rec.line_no, f'set_msb and set c{c} in the loop body starting '
+                                                       f'at line {body_line} give repeat c{c} a different '
+                                                       f'count on each pass; run Expand Loop first')
                 if enclosing:
                     last = max(body[1] for body in enclosing)
                     if any(later.kind == 'set' and later.counter == c

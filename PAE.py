@@ -21,7 +21,7 @@ from src.logger import Logger
 
 multiprocessing.freeze_support()
 
-version = 'V1.15.0'
+version = 'V1.15.1'
 
 class PatAutoEditApp(tk.Tk):
 

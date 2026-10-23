@@ -352,9 +352,57 @@ def check_failures():
                    'c0')
 
 
+# --- set_msb inside a loop body ----------------------------------------------
+
+def check_msb_in_loop():
+    """set_msb is legal inside a loop body, but with a set cX in the same body
+    it gives cX a different value on later passes. Expand Loop follows every
+    pass; Expand Repeat reads the body once, so it must refuse and say why."""
+    # Pass 1: c1 = 2 runs (MSB 0). set_msb 65537 makes the MSBs 1, so pass 2: c1 = 65,538.
+    inside = srm('set_msb 2       > t 0 ;\nset c0 2        > t 0 ;\nouter:\nloop c0         > t 0 ;\n'
+                 'set c1 2        > t 0 ;\nrepeat c1       > t H ;\nset_msb 65537   > t 0 ;\n'
+                 'end_loop outer  > t 0 ;\nhalt            > t 0 ;\n')
+    # After the loop, c1 holds the last pass's value: 65,538 runs.
+    after = srm('set_msb 2       > t 0 ;\nset c0 2        > t 0 ;\nouter:\nloop c0         > t 0 ;\n'
+                'set c1 2        > t 0 ;\nset_msb 65537   > t 0 ;\nend_loop outer  > t 0 ;\n'
+                'repeat c1       > t H ;\nhalt            > t 0 ;\n')
+    for name, text, expected in (('repeat c1 inside the loop', inside, 2 + 65538),
+                                 ('repeat c1 after the loop', after, 65538)):
+        r = run_text(text, ['Expand Loop', 'Expand Repeat'])
+        h = sum(v.rstrip(' ;').endswith('H') for v in r.vectors()) if r.ok else None
+        check(f'{name}: Expand Loop -> Expand Repeat gives {expected:,} runs', h == expected, (h, r.errors()))
+        r = run_text(text, ['Expand Repeat'])
+        check(f'{name}: Expand Repeat alone fails', not r.ok)
+        check(f'{name}: the error says why and what to run first',
+              'set_msb' in r.errors() and 'c1' in r.errors() and 'Expand Loop first' in r.errors(),
+              r.errors())
+
+    # set_msb in a body with no set c1 there cannot change c1, so this is fine.
+    r = run_text(srm('set_msb 2       > t 0 ;\nset c0 2        > t 0 ;\nset c1 3        > t 0 ;\n'
+                     'outer:\nloop c0         > t 0 ;\nset_msb 65537   > t 0 ;\nend_loop outer  > t 0 ;\n'
+                     'repeat c1       > t H ;\nhalt            > t 0 ;\n'), ['Expand Repeat'])
+    h = sum(v.rstrip(' ;').endswith('H') for v in r.vectors()) if r.ok else None
+    check('set_msb in a body without set c1: Expand Repeat gives 3 runs', h == 3, (h, r.errors()))
+
+
+# --- counters this mode does not read ----------------------------------------
+
+def check_unread_counters():
+    """A mode only needs the value of opcodes it expands; a counter loaded
+    elsewhere (e.g. from VBT) on an opcode it leaves in place is fine."""
+    r = run_text(srm('set_msb 2       > t 0 ;\nset c0 2        > t 0 ;\ntop:\nloop c0         > t H ;\n'
+                     'end_loop top    > t L ;\nrepeat c1       > t 1 ;\nhalt            > t 0 ;\n'),
+                 ['Expand Loop'])
+    check('Expand Loop leaves an unset repeat c1 in place', r.ok and 'repeat c1' in r.text, r.errors())
+    r = run_text(srm('set_msb 2       > t 0 ;\nset c1 2        > t 0 ;\ntop:\nloop c0         > t H ;\n'
+                     'end_loop top    > t L ;\nrepeat c1       > t 1 ;\nhalt            > t 0 ;\n'),
+                 ['Expand Repeat'])
+    check('Expand Repeat leaves an unset loop c0 in place', r.ok and 'loop c0' in r.text, r.errors())
+
+
 def main():
     for fn in (check_modes, check_march6n, check_mychecker, check_synthetic, check_pass_through,
-               check_failures):
+               check_failures, check_msb_in_loop, check_unread_counters):
         print(f'\n--- {fn.__name__} ---')
         fn()
 
