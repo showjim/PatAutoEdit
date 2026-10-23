@@ -63,6 +63,17 @@ def check_in_same_range(cycle_num_list, cycle_range):
             return True
     return False
 
+_LABEL_LINE = re.compile(r'^\s*(?:global\s+)?(?:start_label\s+)?([A-Za-z_]\w*)\s*:\s*(?://.*)?$')
+
+def is_label_line(line):
+    """Return the label name if the line is a label on its own, else None"""
+    m = _LABEL_LINE.match(line)
+    return m.group(1) if m else None
+
+def without_labels(content):
+    """Drop label lines from a block of lines (a repeated vector's copies after the first)"""
+    return ''.join(l for l in content.splitlines(keepends=True) if not is_label_line(l))
+
 def get_repeat_cnt(line):
     """Get repeat count from line"""
     repeat_cnt = 0

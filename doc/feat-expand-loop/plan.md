@@ -66,8 +66,15 @@ after `srm_vector`.
 
 [`remove_repeat`](../../src/pattern_processor.py#L26) treats every non-`>` line
 before a vector as part of that vector and writes the whole block on every copy.
-Full-line `//` comments inside the body are skipped. A trailing comment after
-`;` is copied onto every copy.
+Full-line `//` comments inside a module body are skipped. A trailing comment
+after `;` is copied onto every copy.
+
+**Defect found:** because the whole block is copied, a label on the line above a
+`repeat N` vector is written once per repeat
+([pattern_processor.py:65-67](../../src/pattern_processor.py#L65-L67)), and the
+duplicate labels do not compile. None of the files in `Sample/` has a label
+directly above a `repeat` vector, so fixing it does not move the regression
+baseline.
 
 ## Decisions
 
@@ -81,8 +88,8 @@ Full-line `//` comments inside the body are skipped. A trailing comment after
 | Loop body | From the vector the `end_loop` label marks, through the `end_loop` vector. Each copy carries its own instrument (`mto`) lines. |
 | `set` / `set_msb` removal | Strip the opcode **text** only; the vector stays. Other opcodes on the line stay (`set c1 255, stv` → `stv`). Stripped text is replaced with spaces so columns stay aligned. |
 | When to strip `set cX` | Only if, after the mode's own expansion, **no `loop cX` and no `repeat cX` remains in that module**. Strip `set_msb` only once no `set` remains in the module. Either mode order gives the same final file. |
-| Labels | Labels referenced only by `end_loop` are dropped. Any other label inside an expanded body is kept on the first copy only, with a warning. |
-| Comments | Same as today's `Expand Pattern`: trailing comments go on every copy, full-line comments inside a repeated vector are skipped. Inside a loop body, full-line comments are written on every iteration. |
+| Labels | Labels referenced only by `end_loop` are dropped. Any other label inside an expanded loop body is kept on the first copy only, with a warning. For `repeat N` and `repeat cX`, a label above the vector is written on the first copy only (fixes the defect above). |
+| Comments | Same as today's `Expand Pattern`, in both modes: full-line `//` comments inside a module body the mode rewrites are dropped; trailing comments after `;` go on every copy. Header comments are kept. |
 | Time mode | **Single only** for `Expand Loop` and for `repeat cX`. `opcode_mode=dual` / `quad` in the file, or Dual from the GUI, fails the file. `repeat N` keeps today's Dual support. |
 | Unresolvable input | Fail the file (`edit_pattern` returns `None`, the chain stops for that file only), with line number and opcode in the error. |
 | Size | **No cap.** Output is streamed; memory scales with the source module, not the expansion. |
@@ -100,9 +107,11 @@ Inside a module being expanded:
 - A `loop cX`, `repeat cX` or `end_loop` using a counter with no visible `set`
   (e.g. loaded from VBT via `TheHdw.Digital.Patgen.Counter`), or a `set` before
   any `set_msb`.
-- An `end_loop` whose label is not defined earlier in the module, an
-  `end_loop` with no matching `loop` on the stack, or an `end_loop` with a
-  relative address instead of a label.
+- An `end_loop` whose label is not defined earlier in the module, or an
+  `end_loop` with no matching `loop` on the stack.
+- An `end_loop` with a relative address instead of a label. The docs allow
+  it but no sample uses it; the code carries
+  `# TODO: support end_loop with a relative address` at the point it fails.
 - Dual / Quad mode as above.
 
 ## Code changes
@@ -127,6 +136,9 @@ Inside a module being expanded:
 
 ### `src/pattern_processor.py`
 
+- **`remove_repeat`** — keep label lines on the first copy of a repeated
+  vector only; instrument lines and the vector itself are still copied each
+  time. Applies to Single and Dual.
 - **`edit_pattern`** — `Expand Pattern` and `Expand Repeat` share one branch:
   `expand_counter_repeats` first (skipped when the file has no `repeat cX`, so
   Dual-mode files without counters behave exactly as today), then
@@ -163,7 +175,7 @@ New script `test/expand_loop_check.py`, in the style of `test/config_checks.py`.
 
    | Sample | `Expand Loop` only | `Expand Repeat` only | Both, either order |
    | --- | --- | --- | --- |
-   | `march6n.atp` | 131,077 | 65,541 | **196,611** |
+   | `march6n.atp` | 131,077 | 65,543 | **196,611** |
    | `mychecker.atp` | **65,543** | unchanged | 65,543 |
 
    `mychecker`: 3 setup + 32 × (2 + 255 × 4 + 2) write + 2 + 32,768 read + 2.
@@ -181,10 +193,14 @@ New script `test/expand_loop_check.py`, in the style of `test/config_checks.py`.
 7. **Alias.** `Expand Pattern` and `Expand Repeat` outputs are byte-identical.
 8. **Synthetic cases** built in the script: `set` inside a loop body;
    `set_msb` above 65536 so the MSBs matter; stale MSBs; a non-`end_loop` label
-   inside a body (first copy only, warning logged).
+   inside a body (first copy only, warning logged); a label above a `repeat N`
+   vector and above a `repeat cX` vector (exactly one copy of the label in the
+   output); full-line `//` comments inside a loop body (absent from the
+   output).
 9. **Failure fixtures**, each asserting no output is reported: `push_loop`,
    `jump`, `set_infinite`, a counter with no `set`, `set` before `set_msb`,
-   an undefined `end_loop` label, `opcode_mode=dual`.
+   an undefined `end_loop` label, an `end_loop` with a relative address,
+   `opcode_mode=dual`.
 10. **Regression.** `test/regression_baseline.py` shows the existing `Sample/`
     outputs are unchanged (none of them uses counters or SRM).
 11. **GUI smoke.** Both new modes run from the Tk Simplified tab and the
@@ -195,6 +211,7 @@ New script `test/expand_loop_check.py`, in the style of `test/config_checks.py`.
 - **Dual and Quad mode** for `Expand Loop` and `repeat cX`. The record parser
   keeps vector grouping in one place so this can be added later.
 - **Size limits.** Deliberately none; handled by other tooling.
+- **`end_loop` with a relative address.** Fails today; marked `TODO` in code.
 - **Removing `Expand Pattern`.** Future version.
 
 ## Known limitations

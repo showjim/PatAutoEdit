@@ -12,7 +12,7 @@ csv.field_size_limit(100000000)
 #: Processing modes the tool understands. Single source of truth for the
 #: configuration parser, the validators and every mode picker in the UIs.
 MODE_LIST = ['DSSC Capture', 'DSSC Source', 'CMEM/HRAM Capture',
-             'Expand Pattern', 'Compress Pattern', 'WFLAG',
+             'Expand Pattern', 'Expand Repeat', 'Expand Loop', 'Compress Pattern', 'WFLAG',
              'Add Opcode', 'Remove Opcode']
 
 #: Modes that need a pin name, a cycle range, or an opcode string to do anything.

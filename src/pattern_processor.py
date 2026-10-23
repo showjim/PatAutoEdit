@@ -5,8 +5,10 @@ import os, csv
 import re
 from typing import List, Optional
 from src.file_ops import openfile, copy_and_rename
-from src.utils import get_repeat_cnt, cmp, check_in_range, check_in_same_range, get_all_files
+from src.utils import (get_repeat_cnt, cmp, check_in_range, check_in_same_range, get_all_files,
+                       without_labels)
 from src.atp_handler import find_pin_index
+from src.counter_expand import expand_loops, expand_counter_repeats, has_counter_repeat
 from src.logger import Logger
 
 def remove_opcode(something: str, user_string: str) -> str:
@@ -62,9 +64,10 @@ def remove_repeat(something: str, timemode: str) -> str:
                     if repeat_cnt > 1:
                         line[-1] = line[-1].replace('repeat', ' ' * len('repeat'), 1)
                         line[-1] = line[-1].replace(str(repeat_cnt), ' ' * len(str(repeat_cnt)), 1)
+                        # A label is written on the first copy only; duplicates do not compile.
                         for j in range(repeat_cnt):
                             for i in range(len(line)):
-                                new_atp_file.write(line[i])
+                                new_atp_file.write(line[i] if j == 0 else without_labels(line[i]))
                     else:
                         for i in range(len(line)):
                             new_atp_file.write(line[i])
@@ -287,12 +290,41 @@ def edit_pattern(logger: Logger, pin_name: str, something: str, cycle_range: Lis
     otherthing = os.path.join(output_path, os.path.basename(something))
 
     # Simple modes that don't need line-by-line processing
-    if mode == 'Expand Pattern':
-        remove_repeat_file = remove_repeat(something, timemode)
-        copy_and_rename(remove_repeat_file, otherthing)
-        if os.path.exists(remove_repeat_file):
-            os.remove(remove_repeat_file)
-        return otherthing
+    # 'Expand Pattern' is the old name of 'Expand Repeat', kept until it is dropped.
+    if mode in ('Expand Repeat', 'Expand Pattern'):
+        counter_file = None
+        try:
+            source = something
+            if has_counter_repeat(something):
+                counter_file = something.replace(r'.atp', r'_ExpandCounterRepeat.atp')
+                if not expand_counter_repeats(something, counter_file, timemode, logger):
+                    return None
+                source = counter_file
+            remove_repeat_file = remove_repeat(source, timemode)
+            copy_and_rename(remove_repeat_file, otherthing)
+            if os.path.exists(remove_repeat_file):
+                os.remove(remove_repeat_file)
+            return otherthing
+        except Exception as e:
+            logger.error(f"An unexpected error occurred: {str(e)}")
+            return None
+        finally:
+            if counter_file and os.path.exists(counter_file):
+                os.remove(counter_file)
+
+    if mode == 'Expand Loop':
+        expand_loop_file = something.replace(r'.atp', r'_ExpandLoop.atp')
+        try:
+            if not expand_loops(something, expand_loop_file, timemode, logger):
+                return None
+            copy_and_rename(expand_loop_file, otherthing)
+            return otherthing
+        except Exception as e:
+            logger.error(f"An unexpected error occurred: {str(e)}")
+            return None
+        finally:
+            if os.path.exists(expand_loop_file):
+                os.remove(expand_loop_file)
 
     if mode == 'Compress Pattern':
         add_repeat_file = add_repeat(something, timemode)
