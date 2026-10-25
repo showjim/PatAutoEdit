@@ -13,6 +13,7 @@ python PAE.py                       # desktop app
 streamlit run PAE_webapp.py         # web app
 python test/config_checks.py        # main checks; run after engine changes
 python test/parallel_smoke.py       # manual multiprocess smoke test
+python test/regression_baseline.py  # capture/diff outputs for parser rewrites
 ```
 
 No pytest, linter, or formatter is configured; run the scripts directly.
