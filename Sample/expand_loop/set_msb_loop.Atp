@@ -1,0 +1,14 @@
+import tset read;
+
+srm_vector ( $tset, d0)
+{
+set_msb 2           > read 0 ;
+set c0 2            > read 0 ;
+outer:
+loop c0             > read 0 ;
+set c1 2            > read 0 ;
+repeat c1           > read H ;
+set_msb 65537       > read 0 ;
+end_loop outer     > read 0 ;
+halt                > read 0 ;
+}

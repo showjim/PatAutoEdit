@@ -4,14 +4,16 @@ Pattern processing module for ATP file modifications
 import os, csv
 import re
 from typing import List, Optional
-from src.file_ops import openfile, copy_and_rename
-from src.utils import get_repeat_cnt, cmp, check_in_range, check_in_same_range, get_all_files
+from src.file_ops import openfile, copy_and_rename, scratch_path
+from src.utils import (get_repeat_cnt, cmp, check_in_range, check_in_same_range, get_all_files,
+                       without_labels)
 from src.atp_handler import find_pin_index
+from src.counter_expand import expand_loops, expand_counter_repeats, has_counter_repeat
 from src.logger import Logger
 
 def remove_opcode(something: str, user_string: str) -> str:
     """Remove specified opcode from ATP file"""
-    otherthing = something.replace(r'.atp', r'_RemoveOpcode.atp')
+    otherthing = scratch_path(something, 'RemoveOpcode')
     with openfile(otherthing, mode='w') as new_atp_file:
         with openfile(something) as atp_file:
             while True:
@@ -25,7 +27,7 @@ def remove_opcode(something: str, user_string: str) -> str:
 
 def remove_repeat(something: str, timemode: str) -> str:
     """Remove repeat statements from ATP file"""
-    otherthing = something.replace(r'.atp', r'_RemoveRepeat.atp')
+    otherthing = scratch_path(something, 'RemoveRepeat')
 
     line_num = 1 if timemode == '1' else 2
     body_flag = False
@@ -62,9 +64,10 @@ def remove_repeat(something: str, timemode: str) -> str:
                     if repeat_cnt > 1:
                         line[-1] = line[-1].replace('repeat', ' ' * len('repeat'), 1)
                         line[-1] = line[-1].replace(str(repeat_cnt), ' ' * len(str(repeat_cnt)), 1)
+                        # A label is written on the first copy only; duplicates do not compile.
                         for j in range(repeat_cnt):
                             for i in range(len(line)):
-                                new_atp_file.write(line[i])
+                                new_atp_file.write(line[i] if j == 0 else without_labels(line[i]))
                     else:
                         for i in range(len(line)):
                             new_atp_file.write(line[i])
@@ -76,7 +79,7 @@ def remove_repeat(something: str, timemode: str) -> str:
 
 def add_repeat(something: str, timemode: str) -> str:
     """Add repeat statements to ATP file"""
-    otherthing = something.replace(r'.atp', r'_AddRepeat.atp')
+    otherthing = scratch_path(something, 'AddRepeat')
 
     line_index = 0
     repeat_cnt = 1
@@ -287,22 +290,66 @@ def edit_pattern(logger: Logger, pin_name: str, something: str, cycle_range: Lis
     otherthing = os.path.join(output_path, os.path.basename(something))
 
     # Simple modes that don't need line-by-line processing
-    if mode == 'Expand Pattern':
-        remove_repeat_file = remove_repeat(something, timemode)
-        copy_and_rename(remove_repeat_file, otherthing)
-        if os.path.exists(remove_repeat_file):
-            os.remove(remove_repeat_file)
-        return otherthing
+    # 'Expand Pattern' is the old name of 'Expand Repeat', kept until it is dropped.
+    if mode in ('Expand Repeat', 'Expand Pattern'):
+        counter_file = None
+        try:
+            source = something
+            if has_counter_repeat(something):
+                counter_file = scratch_path(something, 'ExpandCounterRepeat')
+                if not expand_counter_repeats(something, counter_file, timemode, logger):
+                    return None
+                source = counter_file
+            remove_repeat_file = remove_repeat(source, timemode)
+            copy_and_rename(remove_repeat_file, otherthing)
+            if os.path.exists(remove_repeat_file):
+                os.remove(remove_repeat_file)
+            return otherthing
+        except FileExistsError as e:
+            logger.error(str(e))
+            return None
+        except Exception as e:
+            logger.error(f"An unexpected error occurred: {str(e)}")
+            return None
+        finally:
+            if counter_file and os.path.exists(counter_file):
+                os.remove(counter_file)
+
+    if mode == 'Expand Loop':
+        expand_loop_file = None
+        try:
+            expand_loop_file = scratch_path(something, 'ExpandLoop')
+            if not expand_loops(something, expand_loop_file, timemode, logger):
+                return None
+            copy_and_rename(expand_loop_file, otherthing)
+            return otherthing
+        except FileExistsError as e:
+            logger.error(str(e))
+            return None
+        except Exception as e:
+            logger.error(f"An unexpected error occurred: {str(e)}")
+            return None
+        finally:
+            if expand_loop_file and os.path.exists(expand_loop_file):
+                os.remove(expand_loop_file)
 
     if mode == 'Compress Pattern':
-        add_repeat_file = add_repeat(something, timemode)
+        try:
+            add_repeat_file = add_repeat(something, timemode)
+        except FileExistsError as e:
+            logger.error(str(e))
+            return None
         copy_and_rename(add_repeat_file, otherthing)
         if os.path.exists(add_repeat_file):
             os.remove(add_repeat_file)
         return otherthing
 
     if mode == 'Remove Opcode':
-        remove_opcode_file = remove_opcode(something, user_string)
+        try:
+            remove_opcode_file = remove_opcode(something, user_string)
+        except FileExistsError as e:
+            logger.error(str(e))
+            return None
         copy_and_rename(remove_opcode_file, otherthing)
         if os.path.exists(remove_opcode_file):
             os.remove(remove_opcode_file)
@@ -319,7 +366,11 @@ def edit_pattern(logger: Logger, pin_name: str, something: str, cycle_range: Lis
 
     # Remove all "repeat" opcode first
     if index_mode == 'Cycle':
-        remove_repeat_file = remove_repeat(something, timemode)
+        try:
+            remove_repeat_file = remove_repeat(something, timemode)
+        except FileExistsError as e:
+            logger.error(str(e))
+            return None
     else:
         remove_repeat_file = something
 
@@ -469,7 +520,11 @@ def extract_cycle_on_keyword(fileFolder: str, keyword: str, logger: Logger):
     resylt_list = get_all_files(fileFolder, ".atp")
 
     for singleFile in resylt_list:
-        removeRepeatFile = remove_repeat(singleFile, '1')
+        try:
+            removeRepeatFile = remove_repeat(singleFile, '1')
+        except FileExistsError as e:
+            logger.error(str(e))
+            continue
         cycle_num = 0
         fileName = os.path.basename(singleFile)
         resultDict[fileName] = []

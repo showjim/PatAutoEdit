@@ -193,6 +193,60 @@ def check_source_dir(work):
           leftover == set(), str(leftover))
 
 
+def check_scratch_files(work):
+    """Scratch files sit next to the source and are named after it. An
+    upper-case extension must not make the scratch path equal the source, and
+    a user's file that happens to carry the scratch name must survive."""
+    os.chdir(work)
+    with open(os.path.join('Sample', ATP)) as f:
+        original = f.read()
+    counter_atp = ('import tset t;\n\nvector ( $tset, a )\n{\nset_msb 3  > t 0 ;\nset c0 3   > t 0 ;\n'
+                   'repeat c0  > t 1 ;\nhalt       > t 0 ;\n}\n')
+
+    def run(name, text, mode, cycles=(), pin='', user_string=''):
+        path = os.path.join('Sample', name)
+        with open(path, 'w') as f:
+            f.write(text)
+        messages = []
+        op = dict(_op(list(cycles), mode, pin, user_string), ATPFile=name)
+        results = process_atp_simple([path], logger=Logger(gui_callback=messages.append),
+                                     config_list=[op])
+        return path, results, ' | '.join(m for m in messages if m.startswith('Error'))
+
+    for mode, cycles, pin, user_string in (('Expand Pattern', (), '', ''),
+                                           ('Expand Repeat', (), '', ''),
+                                           ('Expand Loop', (), '', ''),
+                                           ('Compress Pattern', (), '', ''),
+                                           ('Remove Opcode', (), '', 'repeat'),
+                                           ('DSSC Capture', (7, 7), 'TDO', '')):
+        path, results, errors = run('Upper.ATP', original, mode, cycles, pin, user_string)
+        kept = None
+        if os.path.exists(path):
+            with open(path) as f:
+                kept = f.read()
+        size = os.path.getsize(results[0]) if results and os.path.exists(results[0]) else 0
+        check(f'{mode} on an upper-case .ATP keeps the source', kept == original, errors)
+        check(f'{mode} on an upper-case .ATP writes a non-empty output', size > 0, errors)
+
+    for mode, tag, text, user_string in (('Expand Pattern', 'RemoveRepeat', original, ''),
+                                         ('Expand Repeat', 'ExpandCounterRepeat', counter_atp, ''),
+                                         ('Expand Loop', 'ExpandLoop', original, ''),
+                                         ('Compress Pattern', 'AddRepeat', original, ''),
+                                         ('Remove Opcode', 'RemoveOpcode', original, 'repeat')):
+        sibling = os.path.join('Sample', f'Mine_{tag}.atp')
+        with open(sibling, 'w') as f:
+            f.write('my own file\n')
+        _, results, errors = run('Mine.atp', text, mode, user_string=user_string)
+        survived = False
+        if os.path.exists(sibling):
+            with open(sibling) as f:
+                survived = f.read() == 'my own file\n'
+            os.remove(sibling)
+        check(f'{mode} leaves an existing Mine_{tag}.atp untouched', survived)
+        check(f'{mode} fails and names the clashing Mine_{tag}.atp',
+              not results and f'Mine_{tag}.atp' in errors, errors)
+
+
 # --- parallel dispatch -----------------------------------------------------
 
 def check_parallel(work):
@@ -235,7 +289,7 @@ def check_parallel(work):
 
 def main():
     for fn in (check_parser, check_validation, check_failures, check_user_string,
-               check_source_dir, check_parallel):
+               check_source_dir, check_scratch_files, check_parallel):
         cwd = os.getcwd()
         work = _workdir()
         print(f'\n--- {fn.__name__} ---')

@@ -1,0 +1,26 @@
+import tset inactive, read, write;
+
+instruments = {
+        mto ;
+}
+
+srm_vector        ( $tset   , cs, we, oe, addr           , data    )
+{
+set_msb 32768      > inactive  1   1   1   000000000000000  XXXXXXXX ; 
+(mto = xreg 1023 xenable_load jam_reg xa jam_reg xpreset_select sv yreg 31 yenable_load jam_reg ya jam_reg ypreset_select sv dgroup 0 ) 
+set c0 32768       > inactive  1   1   1   000000000000000  XXXXXXXX ; 
+(mto = xa inc ya inc_link_x ) 
+repeat c0          > write     0   0   1   DDDDDDDDDDDDDDD  DDDDDDDD ; 
+march6n_1:
+(mto = xa inc ya inc_link_x ) 
+loop c0            > read      0   1   0   DDDDDDDDDDDDDDD  EEEEEEEE ; 
+(mto = dset 1 ) 
+end_loop march6n_1 > write     0   0   1   DDDDDDDDDDDDDDD  DDDDDDDD ; 
+march6n_2:
+(mto = xa inc ya inc_link_x dset 1 ) 
+loop c0            > read      0   1   0   DDDDDDDDDDDDDDD  EEEEEEEE ; 
+end_loop march6n_2 > write     0   0   1   DDDDDDDDDDDDDDD  DDDDDDDD ; 
+(mto = xa inc ya inc_link_x ) 
+repeat c0          > read      0   1   0   DDDDDDDDDDDDDDD  EEEEEEEE ; 
+halt               > inactive  1   1   1   000000000000000  XXXXXXXX ; 
+}

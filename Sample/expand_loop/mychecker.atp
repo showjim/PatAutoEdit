@@ -1,0 +1,61 @@
+// Checker_board Pattern -  Written for Single Mode
+// Even data bits are connected to dg0, odd data bits are connected to dg1    
+// [dgroup 0, dataset 0]
+// [dgroup 0, dataset 1]  
+import tset read, write;
+
+instruments = {
+        mto ;
+}
+
+srm_vector             
+checker_board_mod       ( $tset, XADDR     , YADDR, data    , we, oe, cs)
+{
+// Write Background data, all addresses
+(mto = xa load_reg ya load_reg ) 
+set_msb 32              > read   0000000000  00000  XXXXXXXX  1   1   1  ; 
+set c0 32               > read   0000000000  00000  XXXXXXXX  1   1   1  ; 
+set c1 255              > read   0000000000  00000  XXXXXXXX  1   1   1  ; 
+write_cols:
+(mto = xa inc ya inc_link_x ) 
+loop c0                 > write  DDDDDDDDDD  DDDDD  DDDDDDDD  0   1   0  ; 
+(mto = xa inc ya inc_link_x dset 1 ) 
+                        > write  DDDDDDDDDD  DDDDD  DDDDDDDD  0   1   0  ; 
+write_rows:
+(mto = xa inc ya inc_link_x ) 
+loop c1                 > write  DDDDDDDDDD  DDDDD  DDDDDDDD  0   1   0  ; 
+(mto = xa inc ya inc_link_x dset 1 ) 
+                        > write  DDDDDDDDDD  DDDDD  DDDDDDDD  0   1   0  ; 
+(mto = xa inc ya inc_link_x ) 
+                        > write  DDDDDDDDDD  DDDDD  DDDDDDDD  0   1   0  ; 
+(mto = xa inc ya inc_link_x dset 1 ) 
+end_loop write_rows     > write  DDDDDDDDDD  DDDDD  DDDDDDDD  0   1   0  ; 
+(mto = xa inc ya inc_link_x ) 
+                        > write  DDDDDDDDDD  DDDDD  DDDDDDDD  0   1   0  ; 
+(mto = xa inc ya inc_link_x dset 1 ) 
+end_loop write_cols     > write  DDDDDDDDDD  DDDDD  DDDDDDDD  0   1   0  ; 
+// Read Background data, all addresses
+(mto = xa load_reg ya load_reg ) 
+set c0 32               > read   0000000000  00000  XXXXXXXX  1   1   1  ; 
+set c1 255, stv         > read   0000000000  00000  XXXXXXXX  1   1   1  ; 
+read_cols:
+(mto = xa inc ya inc_link_x ) 
+loop c0, stv            > read   DDDDDDDDDD  DDDDD  EEEEEEEE  1   0   0  ; 
+(mto = xa inc ya inc_link_x dset 1 ) 
+stv                     > read   DDDDDDDDDD  DDDDD  EEEEEEEE  1   0   0  ; 
+read_rows:
+(mto = xa inc ya inc_link_x ) 
+loop c1, stv            > read   DDDDDDDDDD  DDDDD  EEEEEEEE  1   0   0  ; 
+(mto = xa inc ya inc_link_x dset 1 ) 
+stv                     > read   DDDDDDDDDD  DDDDD  EEEEEEEE  1   0   0  ; 
+(mto = xa inc ya inc_link_x ) 
+stv                     > read   DDDDDDDDDD  DDDDD  EEEEEEEE  1   0   0  ; 
+(mto = xa inc ya inc_link_x dset 1 ) 
+end_loop read_rows, stv > read   DDDDDDDDDD  DDDDD  EEEEEEEE  1   0   0  ; 
+(mto = xa inc ya inc_link_x ) 
+stv                     > read   DDDDDDDDDD  DDDDD  EEEEEEEE  1   0   0  ; 
+(mto = xa inc ya inc_link_x dset 1 ) 
+end_loop read_cols, stv > read   DDDDDDDDDD  DDDDD  EEEEEEEE  1   0   0  ; 
+                        > read   0000000000  00000  XXXXXXXX  1   1   1  ; 
+halt                    > read   0000000000  00000  XXXXXXXX  1   1   1  ; 
+}

@@ -10,7 +10,8 @@ How to use：
 3. Feature support:
 	* DigCap/DigSrc;
 	* HRAM/CMEM;
-	* Expand Pattern(remove "repeat");
+	* Expand Repeat(remove "repeat N" and "repeat cX"); "Expand Pattern" is the old name of the same mode and will be dropped in a future version;
+	* Expand Loop(flatten "loop"/"end_loop" in srm_vector modules, which then become vm_vector);
 	* Compress Pattern(add "repeat");
 
 ## Config file format
@@ -34,9 +35,9 @@ Instance,Pattern,Status,Process Type,Pin or Method,Cycle,User String
 | Column | Notes |
 | --- | --- |
 | `Pattern` | ATP filename. Required. |
-| `Process Type` | One of: DSSC Capture, DSSC Source, CMEM/HRAM Capture, Expand Pattern, Compress Pattern, WFLAG, Add Opcode, Remove Opcode. Required. |
-| `Pin or Method` | Blank for modes that take no pin (`WFLAG`, `Expand Pattern`, `Compress Pattern`). |
-| `Cycle` | `[a-b];[c-d]` form. Blank for `Expand Pattern`, `Compress Pattern`, `Remove Opcode`. |
+| `Process Type` | One of: DSSC Capture, DSSC Source, CMEM/HRAM Capture, Expand Pattern, Expand Repeat, Expand Loop, Compress Pattern, WFLAG, Add Opcode, Remove Opcode. Required. |
+| `Pin or Method` | Blank for modes that take no pin (`WFLAG`, `Expand Repeat`, `Expand Loop`, `Compress Pattern`). |
+| `Cycle` | `[a-b];[c-d]` form. Blank for `Expand Repeat`, `Expand Loop`, `Compress Pattern`, `Remove Opcode`. |
 | `User String` | Only used by `Add Opcode` / `Remove Opcode`. |
 | `Instance`, `Status` | Ignored. Kept for your own bookkeeping. |
 
@@ -48,5 +49,5 @@ Note: the older 9-column format, where one row held two operations, is no longer
 supported. Such a file is rejected with a message showing the rows to use
 instead. The screenshot above still shows the old layout and needs re-taking.
 
-`Expand Pattern` and `Compress Pattern` always use single time mode; use the
-Classical tab for dual-mode files.
+`Expand Repeat` and `Compress Pattern` always use single time mode; use the
+Classical tab for dual-mode files. `Expand Loop` supports single mode only.

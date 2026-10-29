@@ -16,6 +16,20 @@ def openfile(filename, mode='r'):
     else:
         return open(filename, mode)
 
+def scratch_path(source, tag):
+    """Path for a scratch file next to `source`: `<name>_<tag><ext>`.
+
+    The extension is taken from `source` as written (`.ATP` stays `.ATP`,
+    `.atp.gz` stays `.atp.gz`), so the result can never be `source` itself.
+    Raises FileExistsError rather than overwrite a file that is already there.
+    """
+    gz = source[-3:] if source.lower().endswith('.gz') else ''
+    root, ext = os.path.splitext(source[:len(source) - len(gz)])
+    path = f'{root}_{tag}{ext}{gz}'
+    if os.path.exists(path):
+        raise FileExistsError(f'scratch file {path} already exists; move or rename it and run again')
+    return path
+
 def copy_and_rename(src_path, dest_path):
     """Move/rename a file from src to dest (overwrites dest if exists)"""
     shutil.move(src_path, dest_path)
