@@ -1,0 +1,30 @@
+// Expand Loop + Expand Repeat on counters the test program (VBT) loads before
+// the pattern starts, so this ATP has no set cX. Its rows in
+// Sample/Sample_ATP - simple.csv give the run counts in User String:
+// c0=4; c7=3; c8=2. Expand Loop warns that MTO lines cannot compile in a
+// vm_vector module: the output is input for an MTO data tool.
+import tset inactive, read, write;
+
+instruments = {
+        mto ;
+}
+
+srm_vector        ( $tset   , cs, we, oe, addr           , data    )
+{
+repeat 2           > inactive  1   1   1   000000000000000  XXXXXXXX ;
+(mto = xa jam_reg ya jam_reg dgroup 0 )
+                   > inactive  1   1   1   000000000000000  XXXXXXXX ;
+write_all:
+(mto = xa inc ya inc_link_x )
+loop c0            > write     0   0   1   DDDDDDDDDDDDDDD  DDDDDDDD ;
+repeat c7          > inactive  1   1   1   DDDDDDDDDDDDDDD  XXXXXXXX ;
+end_loop write_all > inactive  1   1   1   000000000000000  XXXXXXXX ;
+(mto = xa jam_reg ya jam_reg dgroup 0 )
+                   > inactive  1   1   1   000000000000000  XXXXXXXX ;
+read_all:
+(mto = xa inc ya inc_link_x )
+loop c0            > read      0   1   0   DDDDDDDDDDDDDDD  EEEEEEEE ;
+repeat c8          > inactive  1   1   1   DDDDDDDDDDDDDDD  XXXXXXXX ;
+end_loop read_all  > inactive  1   1   1   000000000000000  XXXXXXXX ;
+halt               > inactive  1   1   1   000000000000000  XXXXXXXX ;
+}

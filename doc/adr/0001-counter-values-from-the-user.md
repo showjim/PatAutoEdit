@@ -1,0 +1,3 @@
+# Counter values come from the user, not the test program
+
+Some ATPs use counters (`loop cX`, `repeat cX`) that the IG-XL test program loads before the pattern starts, so the ATP has no `set cX` to read. The user types these values as run counts in the row's `User String` (for example `c0=262144; c7=8`), and EditPat never reads the test program. We rejected reading the values from the workbook: customer workbooks arrive with sheets and modules removed, and the VBT computes the values in code from test-instance arguments, globals, enable words and pattern-name checks, so a reader would need a VBA interpreter and would still fail on cut-down workbooks.

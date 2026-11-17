@@ -8,7 +8,8 @@ from src.file_ops import openfile, copy_and_rename, scratch_path
 from src.utils import (get_repeat_cnt, cmp, check_in_range, check_in_same_range, get_all_files,
                        without_labels)
 from src.atp_handler import find_pin_index
-from src.counter_expand import expand_loops, expand_counter_repeats, has_counter_repeat
+from src.counter_expand import (expand_loops, expand_counter_repeats, has_counter_repeat,
+                                log_unused_counters, parse_counter_values)
 from src.logger import Logger
 
 def remove_opcode(something: str, user_string: str) -> str:
@@ -289,6 +290,15 @@ def edit_pattern(logger: Logger, pin_name: str, something: str, cycle_range: Lis
 
     otherthing = os.path.join(output_path, os.path.basename(something))
 
+    # Counter run counts the test program loads, given in User String.
+    counters = {}
+    if mode in ('Expand Repeat', 'Expand Pattern', 'Expand Loop'):
+        try:
+            counters = parse_counter_values(user_string)
+        except ValueError as e:
+            logger.error(f'{mode} on {something}: User String: {e}')
+            return None
+
     # Simple modes that don't need line-by-line processing
     # 'Expand Pattern' is the old name of 'Expand Repeat', kept until it is dropped.
     if mode in ('Expand Repeat', 'Expand Pattern'):
@@ -297,9 +307,11 @@ def edit_pattern(logger: Logger, pin_name: str, something: str, cycle_range: Lis
             source = something
             if has_counter_repeat(something):
                 counter_file = scratch_path(something, 'ExpandCounterRepeat')
-                if not expand_counter_repeats(something, counter_file, timemode, logger):
+                if not expand_counter_repeats(something, counter_file, timemode, logger, counters):
                     return None
                 source = counter_file
+            else:
+                log_unused_counters(logger, something, 'Expand Repeat', counters, set())
             remove_repeat_file = remove_repeat(source, timemode)
             copy_and_rename(remove_repeat_file, otherthing)
             if os.path.exists(remove_repeat_file):
@@ -319,7 +331,7 @@ def edit_pattern(logger: Logger, pin_name: str, something: str, cycle_range: Lis
         expand_loop_file = None
         try:
             expand_loop_file = scratch_path(something, 'ExpandLoop')
-            if not expand_loops(something, expand_loop_file, timemode, logger):
+            if not expand_loops(something, expand_loop_file, timemode, logger, counters):
                 return None
             copy_and_rename(expand_loop_file, otherthing)
             return otherthing

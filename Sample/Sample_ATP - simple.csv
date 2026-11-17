@@ -7,3 +7,9 @@ Instance,Pattern,Status,Process Type,Pin or Method,Cycle,User String
 ,Sample_ATP - 1.atp,Done,DSSC Capture,TDO,[7-7];[12-12],
 ,Sample_ATP - 2.atp,,Compress Pattern,,,
 ,Sample_ATP - 3.atp,,WFLAG,,[8-8],
+,march6n.atp,,Expand Loop,,,
+,march6n.atp,,Expand Repeat,,,
+,counters_set_in_atp.atp,,Expand Loop,,,
+,counters_set_in_atp.atp,,Expand Repeat,,,
+,counters_preloaded_mto.atp,,Expand Loop,,,c0=4; c7=3; c8=2
+,counters_preloaded_mto.atp,,Expand Repeat,,,c0=4; c7=3; c8=2

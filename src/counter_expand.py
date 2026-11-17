@@ -15,9 +15,13 @@ Counter semantics follow UltraPin1600 (IG-XL 11.10.00, Vector Data Microcode):
 
 A loop counter is back at its set value once its loop ends, so one counter can
 drive several loops and repeats in turn. Single mode only.
+
+Counters the test program loads before the pattern starts are passed in as run
+counts read from User String by `parse_counter_values`; they are each module's
+starting values and do not set the MSB register.
 '''
 import re
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Set, Tuple
 
 from src.file_ops import openfile
 from src.logger import Logger
@@ -39,6 +43,8 @@ _OP_PATTERNS = (
 )
 _RELATIVE_ADDRESS = re.compile(r'[+-]?\d+')
 _COUNTER_REPEAT_LINE = re.compile(r'\brepeat\s+c\d+\b')
+_COUNTER_VALUE = re.compile(r'[cC]([0-9]+)\s*=\s*([0-9]+)')
+_MTO = re.compile(r'\(\s*mto\s*=', re.IGNORECASE)
 _MAX_VALUE = 2 ** 28 - 1
 _COUNTERS = 16
 
@@ -103,6 +109,32 @@ def _parse_counter(text: str, line_no: int) -> int:
     if counter >= _COUNTERS:
         raise ExpandError(line_no, f'c{counter} is not a user counter (c0..c{_COUNTERS - 1})')
     return counter
+
+
+def parse_counter_values(text: str) -> Dict[int, int]:
+    """Read preloaded counter run counts from a User String.
+
+    `c0=262144; c7=8` gives {0: 262144, 7: 8}; blank text gives {}. Raises
+    ValueError with a user-facing reason when the text cannot be used.
+    """
+    values: Dict[int, int] = {}
+    for segment in text.split(';'):
+        segment = segment.strip()
+        if not segment:
+            continue
+        m = _COUNTER_VALUE.fullmatch(segment)
+        if not m:
+            raise ValueError(f"cannot read {segment!r}; write cN=run count, separated by ';' "
+                             f"(for example c0=262144; c7=8)")
+        counter, value = int(m.group(1)), int(m.group(2))
+        if counter >= _COUNTERS:
+            raise ValueError(f'c{counter} is not a user counter (c0..c{_COUNTERS - 1})')
+        if counter in values:
+            raise ValueError(f'c{counter} is given twice')
+        if not 1 <= value <= _MAX_VALUE:
+            raise ValueError(f'c{counter}={value} is outside 1..{_MAX_VALUE}')
+        values[counter] = value
+    return values
 
 
 def _parse_ops(field: str, line_no: int) -> List[_Op]:
@@ -221,11 +253,17 @@ def _require_single(path: str, timemode: str, mode: str) -> None:
 # ---------------------------------------------------------------------------
 
 class _Counters:
-    """MSB register and user counters, loaded the way set_msb / set load them."""
+    """MSB register and user counters, loaded the way set_msb / set load them.
 
-    def __init__(self):
+    `preloaded` holds run counts the test program loads before the pattern
+    starts; it does not set the MSB register. Every counter read through `get`
+    is added to `used`.
+    """
+
+    def __init__(self, preloaded: Optional[Dict[int, int]] = None, used: Optional[Set[int]] = None):
         self.msb = None
-        self.values: Dict[int, int] = {}
+        self.values: Dict[int, int] = {c: n - 1 for c, n in (preloaded or {}).items()}
+        self.used = used if used is not None else set()
 
     def set_msb(self, value: int) -> None:
         self.msb = ((value - 1) >> 16) & 0xFFF
@@ -236,10 +274,28 @@ class _Counters:
         self.values[counter] = (self.msb << 16) | ((value - 1) & 0xFFFF)
 
     def get(self, counter: int, user: str, line_no: int) -> int:
+        self.used.add(counter)
         if counter not in self.values:
             raise ExpandError(line_no, f'{user} c{counter} uses a counter that is never set '
-                                       f'in this module')
+                                       f'in this module; if the test program loads it, add '
+                                       f'c{counter}=<run count> to User String')
         return self.values[counter]
+
+
+def log_unused_counters(logger: Logger, path: str, mode: str, counters: Dict[int, int],
+                        used: Set[int]) -> None:
+    """Log one info line naming the User String values `mode` did not read."""
+    unused = sorted(set(counters) - used)
+    if unused:
+        logger.info(f'{path}: User String values not used by {mode}: '
+                    + ', '.join(f'c{c}' for c in unused))
+
+
+def _has_mto(records: List[_Record]) -> bool:
+    """True when a vector, or an instrument line above it, carries MTO microcode."""
+    return any(_MTO.search(rec.field)
+               or any(kind == 'other' and _MTO.search(text) for kind, text, _ in rec.pre)
+               for rec in records)
 
 
 def _reject_unsupported(records: List[_Record], mode: str) -> None:
@@ -315,7 +371,8 @@ def _log_error(logger: Logger, path: str, mode: str, e: ExpandError) -> None:
 # ---------------------------------------------------------------------------
 
 def _expand_module_loops(module: _Module, records: List[_Record], trailing, out,
-                         logger: Logger, path: str) -> None:
+                         logger: Logger, path: str, preloaded: Optional[Dict[int, int]],
+                         used: Set[int]) -> None:
     _reject_unsupported(records, 'Expand Loop')
     label_idx, targets, _ = _loop_structure(records)
     repeat_counters = {op.counter for rec in records for op in rec.ops if op.kind == 'repeat'}
@@ -328,7 +385,7 @@ def _expand_module_loops(module: _Module, records: List[_Record], trailing, out,
             break
     out.writelines(header)
 
-    counters = _Counters()
+    counters = _Counters(preloaded, used)
     stack = []  # [counter, iterations left after this one, record that pushed it]
     written_labels, warned = set(), set()
     pc = 0
@@ -383,17 +440,21 @@ def _expand_module_loops(module: _Module, records: List[_Record], trailing, out,
     _write_trailing(module, trailing, out)
 
 
-def expand_loops(src: str, dst: str, timemode: str, logger: Logger) -> bool:
+def expand_loops(src: str, dst: str, timemode: str, logger: Logger,
+                 counters: Optional[Dict[int, int]] = None) -> bool:
     """Write `src` to `dst` with every srm_vector loop flattened.
 
     An srm_vector module with loops becomes vm_vector; every other module is
-    copied unchanged. Returns False, after logging why, when the file cannot
+    copied unchanged. `counters` are run counts the test program loads before
+    the pattern starts. Returns False, after logging why, when the file cannot
     be expanded.
     """
     mode = 'Expand Loop'
+    used: Set[int] = set()
     try:
         _require_single(src, timemode, mode)
         expanded = 0
+        mto = False
         with openfile(dst, mode='w') as out:
             for kind, item in _read(src):
                 if kind == 'text':
@@ -403,10 +464,17 @@ def expand_loops(src: str, dst: str, timemode: str, logger: Logger) -> bool:
                 if module.kind == 'srm_vector':
                     records, trailing = module.records()
                     if any(op.kind in ('loop', 'end_loop') for rec in records for op in rec.ops):
-                        _expand_module_loops(module, records, trailing, out, logger, src)
+                        _expand_module_loops(module, records, trailing, out, logger, src,
+                                             counters, used)
                         expanded += 1
+                        mto = mto or _has_mto(records)
                         continue
                 module.write_verbatim(out)
+        log_unused_counters(logger, src, mode, counters or {}, used)
+        if mto:
+            # IG-XL rejects MTO microcode in VM modules; see doc/adr/0002.
+            logger.warning(f"{src}: MTO lines kept in a vm_vector module: IG-XL can't compile "
+                           f"this file; use it as input for an MTO data tool")
         if not expanded:
             logger.info(f'No srm_vector loops in {src}; copied unchanged')
         return True
@@ -431,7 +499,8 @@ def has_counter_repeat(path: str) -> bool:
     return False
 
 
-def _expand_module_repeats(module: _Module, records: List[_Record], trailing, out) -> None:
+def _expand_module_repeats(module: _Module, records: List[_Record], trailing, out,
+                           preloaded: Optional[Dict[int, int]], used: Set[int]) -> None:
     _reject_unsupported(records, 'Expand Repeat')
     _, _, bodies = _loop_structure(records)
     loop_counters = {op.counter for rec in records for op in rec.ops if op.kind == 'loop'}
@@ -448,7 +517,7 @@ def _expand_module_repeats(module: _Module, records: List[_Record], trailing, ou
                                {op.counter for op in kinds if op.kind == 'set'}))
 
     out.writelines(module.header)
-    counters = _Counters()
+    counters = _Counters(preloaded, used)
     for i, rec in enumerate(records):
         enclosing = [body for body in bodies if body[0] <= i <= body[1]]
         copies = 1
@@ -487,14 +556,17 @@ def _expand_module_repeats(module: _Module, records: List[_Record], trailing, ou
     _write_trailing(module, trailing, out)
 
 
-def expand_counter_repeats(src: str, dst: str, timemode: str, logger: Logger) -> bool:
+def expand_counter_repeats(src: str, dst: str, timemode: str, logger: Logger,
+                           counters: Optional[Dict[int, int]] = None) -> bool:
     """Write `src` to `dst` with every `repeat cX` flattened.
 
     Labels above a repeated vector are written on the first copy only. Modules
-    without `repeat cX` are copied unchanged. Returns False, after logging why,
-    when the file cannot be expanded.
+    without `repeat cX` are copied unchanged. `counters` are run counts the
+    test program loads before the pattern starts. Returns False, after logging
+    why, when the file cannot be expanded.
     """
     mode = 'Expand Repeat'
+    used: Set[int] = set()
     try:
         _require_single(src, timemode, mode)
         with openfile(dst, mode='w') as out:
@@ -505,9 +577,10 @@ def expand_counter_repeats(src: str, dst: str, timemode: str, logger: Logger) ->
                 module = item
                 records, trailing = module.records()
                 if any(op.kind == 'repeat' for rec in records for op in rec.ops):
-                    _expand_module_repeats(module, records, trailing, out)
+                    _expand_module_repeats(module, records, trailing, out, counters, used)
                 else:
                     module.write_verbatim(out)
+        log_unused_counters(logger, src, mode, counters or {}, used)
         return True
     except ExpandError as e:
         _log_error(logger, src, mode, e)
