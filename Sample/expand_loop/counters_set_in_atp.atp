@@ -1,0 +1,18 @@
+// Expand Loop + Expand Repeat on counters the ATP sets itself (set_msb, set cX).
+// Its rows in Sample/Sample_ATP - simple.csv need no User String.
+// c0 = 8 loop passes; c1 = 6 runs of the read vector on each pass. Expanded,
+// that is 70 vectors: a VM module needs at least 64 in single mode to compile.
+import tset inactive, read, write;
+
+srm_vector        ( $tset   , cs, we, oe, addr           , data    )
+{
+repeat 2           > inactive  1   1   1   000000000000000  XXXXXXXX ;
+set_msb 8          > inactive  1   1   1   000000000000000  XXXXXXXX ;
+set c0 8           > inactive  1   1   1   000000000000000  XXXXXXXX ;
+set c1 6           > inactive  1   1   1   000000000000000  XXXXXXXX ;
+rw_loop:
+loop c0            > write     0   0   1   000000000000001  01010101 ;
+repeat c1          > read      0   1   0   000000000000001  LHLHLHLH ;
+end_loop rw_loop   > inactive  1   1   1   000000000000000  XXXXXXXX ;
+halt               > inactive  1   1   1   000000000000000  XXXXXXXX ;
+}

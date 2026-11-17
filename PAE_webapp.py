@@ -179,7 +179,9 @@ By ENTERING PASSWORD "teradyne" of this tool, you acknowledge that you have read
             ),
             "User String": st.column_config.TextColumn(
                 "User String",
-                help="Only used by Add Opcode / Remove Opcode",
+                help="Add Opcode / Remove Opcode: the opcode text. "
+                     "Expand Repeat / Expand Loop: counter run counts, e.g. c0=262144; c7=8. "
+                     "A VBT line Counter = X means X+1 runs.",
                 width="medium",
             ),
         },

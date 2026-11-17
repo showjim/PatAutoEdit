@@ -6,7 +6,9 @@ Created on Dec 8, 2015
 import os
 from typing import List, Dict, Any, Optional
 from src.atp_handler import (read_pinmap, analyse_merge_config,
-                             build_config_from_classical, missing_requirements, MODE_LIST)
+                             build_config_from_classical, missing_requirements, MODE_LIST,
+                             COUNTER_MODES)
+from src.counter_expand import parse_counter_values
 from src.pattern_processor import edit_pattern
 from src.logger import Logger
 
@@ -65,6 +67,11 @@ def _validate_config(config_list: List[Dict], atp_files: List[str], logger: Logg
     for op in config_list:
         for field in missing_requirements(op):
             problems.append(f"{op.get('Mode', '')} on {op.get('ATPFile', '')}: {field} is required")
+        if op.get("Mode") in COUNTER_MODES:
+            try:
+                parse_counter_values(op.get("UserString", ""))
+            except ValueError as e:
+                problems.append(f"{op.get('Mode', '')} on {op.get('ATPFile', '')}: User String: {e}")
 
     seen = set()
     for op in config_list:

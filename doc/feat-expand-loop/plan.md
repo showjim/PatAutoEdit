@@ -125,6 +125,8 @@ Inside a module being expanded:
   `set_msb`. An opcode the mode leaves in place (a `repeat cX` under
   `Expand Loop`, a `loop cX` under `Expand Repeat`) does not need its value, so
   an unset counter there is fine; the later mode checks it.
+  Later: values the VBT loads can now be given in User String; see
+  [the preloaded counters plan](../feat-preloaded-counters/plan.md).
 - `Expand Repeat` only: a `repeat cX` inside or after a loop body that holds
   both a `set_msb` and a `set cX`. The MSBs change between passes, so cX has a
   different value on each pass, and this mode reads each body once. The error
@@ -264,3 +266,9 @@ New script `test/expand_loop_check.py`, in the style of `test/config_checks.py`.
 - `WFLAG` output cannot be loop-expanded (infinite counters).
 - A label kept on the first copy of an expanded body may no longer mean what
   it did, if something outside the module jumps to it.
+- Found later: MTO microcode is not allowed in a `vm_vector` module (`apc`
+  11.10.00: "MTO/MPG extended microcodes are not allowed in VM modules"), so
+  `Expand Loop` output for an MTO pattern cannot be compiled. This plan assumed
+  MTO lines could stay in a VM module. The output is input for an MTO data
+  tool, and `Expand Loop` warns about it; see
+  [ADR 0002](../adr/0002-expanded-mto-patterns-are-not-compiled.md).

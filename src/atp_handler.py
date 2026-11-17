@@ -19,6 +19,8 @@ MODE_LIST = ['DSSC Capture', 'DSSC Source', 'CMEM/HRAM Capture',
 _PIN_MODES = ('DSSC Capture', 'DSSC Source', 'CMEM/HRAM Capture')
 _CYCLE_MODES = _PIN_MODES + ('WFLAG', 'Add Opcode')
 _USER_STRING_MODES = ('Add Opcode', 'Remove Opcode')
+#: Modes whose optional User String holds preloaded counter run counts.
+COUNTER_MODES = ('Expand Pattern', 'Expand Repeat', 'Expand Loop')
 
 #: Columns a row-per-op config must carry, matched case-insensitively.
 _REQUIRED_COLUMNS = ('pattern', 'process type', 'pin or method', 'cycle')
@@ -79,7 +81,8 @@ def build_config_from_classical(csv_file: str, mode: str, pin_name: str,
         pin_name: Pin name from GUI
         time_mode: 'Single' or 'Dual' from GUI
         index_mode: 'Cycle' or 'Vector' from GUI
-        user_string: Opcode text for 'Add Opcode' / 'Remove Opcode'
+        user_string: Opcode text for 'Add Opcode' / 'Remove Opcode', or
+            counter run counts for the Expand modes (e.g. 'c0=262144; c7=8')
 
     Returns:
         List of config dicts in the same format as analyse_merge_config output

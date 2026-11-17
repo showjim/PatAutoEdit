@@ -21,7 +21,15 @@ from src.logger import Logger
 
 multiprocessing.freeze_support()
 
-version = 'V1.15.1'
+version = 'V1.16.0'
+
+#: Text the Classical tab's User String box starts with.
+_USER_STRING_HINT = "Please Enter the User String"
+
+
+def _user_string(text):
+    """The Classical tab's User String, with the untouched hint text read as empty."""
+    return '' if text.strip() == _USER_STRING_HINT else text
 
 class PatAutoEditApp(tk.Tk):
 
@@ -156,7 +164,7 @@ class PatAutoEditApp(tk.Tk):
         self.ety_user_string.grid(row=3, column=1)
 
         self.contents7 = StringVar()
-        self.contents7.set("Please Enter the User String")
+        self.contents7.set(_USER_STRING_HINT)
         self.ety_user_string.config(textvariable=self.contents7)
 
         # Step 8. Please choose index mode
@@ -346,7 +354,7 @@ class PatAutoEditApp(tk.Tk):
         Mode = self.cmb.get()
         TimeMode = self.check_box_var2.get()
         IndexMode = self.check_box_var1.get()
-        UserString = self.ety_user_string.get()
+        UserString = _user_string(self.ety_user_string.get())
 
         if Mode not in MODE_LIST:
             self.logger.error("Wrong Choice !!!")

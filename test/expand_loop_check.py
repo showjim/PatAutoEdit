@@ -21,12 +21,14 @@ REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if REPO not in sys.path:
     sys.path.insert(0, REPO)
 
-from src.atp_handler import MODE_LIST, missing_requirements  # noqa: E402
+from src.atp_handler import MODE_LIST, analyse_merge_config, missing_requirements  # noqa: E402
 from src.logger import Logger  # noqa: E402
 from src.main import process_atp_simple  # noqa: E402
+from src.pattern_processor import edit_pattern  # noqa: E402
 
 FIXTURES = os.path.join(REPO, 'Sample', 'expand_loop')
 SAMPLE_ATP = os.path.join(REPO, 'Sample', 'Sample_ATP.atp')
+SIMPLE_CSV = os.path.join(REPO, 'Sample', 'Sample_ATP - simple.csv')
 
 _failures = []
 
@@ -55,6 +57,9 @@ class Run:
     def warnings(self):
         return ' | '.join(m for m in self.messages if m.startswith('Warning'))
 
+    def infos(self):
+        return ' | '.join(m for m in self.messages if m.startswith('Info'))
+
     def vectors(self):
         return [l for l in self.text.splitlines() if '>' in l and not l.strip().startswith('//')]
 
@@ -62,8 +67,11 @@ class Run:
         return len(re.findall(pattern, self.text, flags=re.MULTILINE))
 
 
-def run_chain(source, modes, time_mode='Single'):
-    """Copy `source` into a fresh directory and run `modes` on it in order."""
+def run_chain(source, modes, time_mode='Single', user_string=''):
+    """Copy `source` into a fresh directory and run `modes` on it in order.
+
+    `user_string` goes on every row, as a user would paste one set of counter
+    values onto each Expand row."""
     cwd = os.getcwd()
     work = tempfile.mkdtemp(prefix='pae_expand_')
     try:
@@ -71,7 +79,7 @@ def run_chain(source, modes, time_mode='Single'):
         name = os.path.basename(source)
         shutil.copy2(source, name)
         messages = []
-        ops = [{"ATPFile": name, "CycleRange": [], "Mode": m, "PinName": "", "UserString": "",
+        ops = [{"ATPFile": name, "CycleRange": [], "Mode": m, "PinName": "", "UserString": user_string,
                 "TimeMode": time_mode, "IndexMode": "Cycle"} for m in modes]
         results = process_atp_simple([name], logger=Logger(gui_callback=messages.append),
                                      config_list=ops)
@@ -85,14 +93,14 @@ def run_chain(source, modes, time_mode='Single'):
         shutil.rmtree(work, ignore_errors=True)
 
 
-def run_text(atp_text, modes, time_mode='Single', name='synthetic.atp'):
+def run_text(atp_text, modes, time_mode='Single', name='synthetic.atp', user_string=''):
     """Write `atp_text` to a scratch file and run `modes` on it."""
     scratch = tempfile.mkdtemp(prefix='pae_src_')
     try:
         path = os.path.join(scratch, name)
         with open(path, 'w') as f:
             f.write(atp_text)
-        return run_chain(path, modes, time_mode)
+        return run_chain(path, modes, time_mode, user_string)
     finally:
         shutil.rmtree(scratch, ignore_errors=True)
 
@@ -133,6 +141,8 @@ def check_march6n():
               el.count(r'\bset_msb\b') == 1 and el.count(r'\bset c0\b') == 1)
         check('march6n Expand Loop: end_loop labels dropped',
               el.count(r'march6n_1:') == 0 and el.count(r'march6n_2:') == 0)
+        check('march6n Expand Loop: warns once that MTO lines in vm_vector cannot compile',
+              el.warnings().count('MTO lines kept in a vm_vector module') == 1, el.warnings())
 
     er = run_chain(src, ['Expand Repeat'])
     check('march6n Expand Repeat succeeds', er.ok, er.errors())
@@ -146,6 +156,8 @@ def check_march6n():
               er.count(r'\bset_msb\b') == 1 and er.count(r'\bset c0\b') == 1)
         check('march6n Expand Repeat: end_loop labels stay',
               er.count(r'^march6n_1:') == 1 and er.count(r'^march6n_2:') == 1)
+        check('march6n Expand Repeat: stays SRM, so no MTO warning',
+              'MTO lines kept' not in er.warnings(), er.warnings())
 
     ep = run_chain(src, ['Expand Pattern'])
     check('march6n Expand Pattern is byte-identical to Expand Repeat',
@@ -227,6 +239,8 @@ def check_synthetic():
         h = [v for v in r.vectors() if v.rstrip(' ;').endswith('H')]
         check('set inside a loop body: inner runs 2, then 4, then 4', len(h) == 10, len(h))
         check('set inside a loop body: 33 vectors', len(r.vectors()) == 33, len(r.vectors()))
+        check('a loop module without MTO lines gives no MTO warning',
+              'MTO lines kept' not in r.warnings(), r.warnings())
 
     # MSBs matter above 65536, and a set without a fresh set_msb reuses them.
     r = run_text(srm(
@@ -400,9 +414,166 @@ def check_unread_counters():
     check('Expand Repeat leaves an unset loop c0 in place', r.ok and 'loop c0' in r.text, r.errors())
 
 
+# --- counters loaded by the test program --------------------------------------
+
+_PRELOADED = srm('                > t 0 ;\n'
+                 'top:\n'
+                 'loop c0         > t 1 ;\n'
+                 'repeat c7       > t H ;\n'
+                 'end_loop top    > t L ;\n'
+                 'halt            > t 0 ;\n')
+
+
+def check_preloaded_counters():
+    """Counters the test program loads come from User String, as run counts."""
+    values = 'c0=3; c7=2'
+    el = run_text(_PRELOADED, ['Expand Loop'], user_string=values)
+    check('preloaded c0: Expand Loop succeeds', el.ok, el.errors())
+    if el.ok:
+        check('preloaded c0: 1 + 3 x 3 + 1 vectors', len(el.vectors()) == 11, len(el.vectors()))
+        check('preloaded c0: repeat c7 stays on every pass', el.count(r'\brepeat c7\b') == 3)
+        check('preloaded c0: info names c7 as not used by Expand Loop',
+              'not used by Expand Loop: c7' in el.infos(), el.infos())
+
+    both = run_text(_PRELOADED, ['Expand Loop', 'Expand Repeat'], user_string=values)
+    rev = run_text(_PRELOADED, ['Expand Repeat', 'Expand Loop'], user_string=values)
+    check('same User String on both rows: Expand Loop -> Expand Repeat succeeds', both.ok, both.errors())
+    if both.ok:
+        h = [v for v in both.vectors() if v.rstrip(' ;').endswith('H')]
+        check('same User String on both rows: 1 + 3 x (1 + 2 + 1) + 1 vectors',
+              len(both.vectors()) == 14, len(both.vectors()))
+        check('same User String on both rows: repeat c7 runs 2 times on each of 3 passes',
+              len(h) == 6, len(h))
+        check('same User String on both rows: no loop, end_loop or repeat cX left',
+              both.count(r'\b(loop|end_loop)\b') == 0 and both.count(r'\brepeat\s+c\d') == 0)
+        check('same User String on both rows: info names c0 as not used by Expand Repeat',
+              'not used by Expand Repeat: c0' in both.infos(), both.infos())
+    check('same User String on both rows: either order is byte-identical',
+          both.ok and rev.ok and both.text == rev.text, rev.errors())
+
+    r = run_text(_PRELOADED, ['Expand Loop'], user_string='c0=1; c7=2')
+    check('run count 1 means one pass: 1 + 3 + 1 vectors', r.ok and len(r.vectors()) == 5,
+          r.errors() or len(r.vectors()))
+
+    r = run_text(srm('repeat c0       > t 1 ;\nset_msb 4       > t 0 ;\nset c0 4        > t 0 ;\n'
+                     'repeat c0       > t H ;\nhalt            > t 0 ;\n'),
+                 ['Expand Repeat'], user_string='c0=2')
+    check('an ATP set overrides a preloaded value: succeeds', r.ok, r.errors())
+    if r.ok:
+        ones = [v for v in r.vectors() if v.rstrip(' ;').endswith('1')]
+        h = [v for v in r.vectors() if v.rstrip(' ;').endswith('H')]
+        check('an ATP set overrides a preloaded value: 2 runs before the set, 4 after',
+              len(ones) == 2 and len(h) == 4, (len(ones), len(h)))
+
+    expect_failure('a set with no set_msb still fails when c0 is preloaded',
+                   run_text(srm('set c0 4        > t 0 ;\nrepeat c0       > t 1 ;\n'),
+                            ['Expand Repeat'], user_string='c0=2'), 'set_msb')
+    r = run_text(_PRELOADED, ['Expand Repeat'], user_string='c0=3')
+    expect_failure('a needed counter missing from User String', r, 'c7')
+    check('a needed counter missing from User String: the error points to User String',
+          'User String' in r.errors(), r.errors())
+    expect_failure('an unreadable User String',
+                   run_text(_PRELOADED, ['Expand Loop'], user_string='c0=abc'),
+                   "User String: cannot read 'c0=abc'")
+
+    plain = run_chain(SAMPLE_ATP, ['Expand Repeat'])
+    given = run_chain(SAMPLE_ATP, ['Expand Repeat'], user_string='c0=5')
+    check('Expand Repeat with values on a file without repeat cX: output unchanged',
+          plain.ok and given.ok and plain.text == given.text, given.errors())
+    check('Expand Repeat with values on a file without repeat cX: info names c0 as not used',
+          'not used by Expand Repeat: c0' in given.infos(), given.infos())
+
+    # edit_pattern can be called without the up-front config check.
+    cwd = os.getcwd()
+    work = tempfile.mkdtemp(prefix='pae_direct_')
+    try:
+        os.chdir(work)
+        with open('direct.atp', 'w') as f:
+            f.write(_PRELOADED)
+        messages = []
+        out = edit_pattern(Logger(gui_callback=messages.append), '', 'direct.atp', [],
+                           'Expand Loop', '1', 'Cycle', 'c0=abc')
+        errors = ' | '.join(m for m in messages if m.startswith('Error'))
+        check('edit_pattern with an unreadable User String returns None', out is None)
+        check('edit_pattern with an unreadable User String gives the reason',
+              "User String: cannot read 'c0=abc'" in errors, errors)
+    finally:
+        os.chdir(cwd)
+        shutil.rmtree(work, ignore_errors=True)
+
+
+# --- the samples shipped in Sample/expand_loop, run from the sample CSV -------
+
+def run_sample_rows(name):
+    """Run the rows Sample_ATP - simple.csv has for Sample/expand_loop/<name>.
+
+    Returns (the rows' modes, the Run), so the check proves the CSV rows and
+    the sample file work together the way the README says."""
+    ops = [op for op in analyse_merge_config(SIMPLE_CSV, Logger()) if op['ATPFile'] == name]
+    cwd = os.getcwd()
+    work = tempfile.mkdtemp(prefix='pae_sample_')
+    try:
+        os.chdir(work)
+        messages = []
+        results = []
+        if os.path.exists(os.path.join(FIXTURES, name)):
+            shutil.copy2(os.path.join(FIXTURES, name), name)
+            results = process_atp_simple([name], logger=Logger(gui_callback=messages.append),
+                                         config_list=ops)
+        text = None
+        if results:
+            with open(results[0]) as f:
+                text = f.read()
+        return [op['Mode'] for op in ops], Run(text, messages)
+    finally:
+        os.chdir(cwd)
+        shutil.rmtree(work, ignore_errors=True)
+
+
+def check_samples():
+    # Counters set by the ATP itself: no User String needed.
+    modes, r = run_sample_rows('counters_set_in_atp.atp')
+    check('sample CSV: counters_set_in_atp.atp runs Expand Loop then Expand Repeat',
+          modes == ['Expand Loop', 'Expand Repeat'], modes)
+    check('sample counters_set_in_atp.atp expands', r.ok, r.errors())
+    if r.ok:
+        # repeat 2 (2) + 3 set vectors + 8 passes x (1 + repeat c1 x 6 + 1) + halt; at least
+        # 64, the smallest VM module IG-XL compiles in single mode.
+        check('sample counters_set_in_atp.atp: 70 vectors', len(r.vectors()) == 70, len(r.vectors()))
+        # The header comment talks about these opcodes, so look at opcode fields only.
+        fields = sorted({v.split('>')[0].strip() for v in r.vectors()})
+        check('sample counters_set_in_atp.atp: no loop, repeat, set or set_msb left on a vector',
+              fields == ['', 'halt'], fields)
+        check('sample counters_set_in_atp.atp: becomes vm_vector', r.count(r'^\s*vm_vector\b') == 1)
+        check('sample counters_set_in_atp.atp: no MTO warning, no unused values',
+              'MTO lines kept' not in r.warnings() and 'not used' not in r.infos(),
+              r.warnings() + r.infos())
+
+    # Counters the test program loads: values come from User String.
+    modes, r = run_sample_rows('counters_preloaded_mto.atp')
+    check('sample CSV: counters_preloaded_mto.atp runs Expand Loop then Expand Repeat',
+          modes == ['Expand Loop', 'Expand Repeat'], modes)
+    check('sample counters_preloaded_mto.atp expands with the CSV User String', r.ok, r.errors())
+    if r.ok:
+        # repeat 2 (2) + jam + 4 x (1 + repeat c7 x 3 + 1) + jam + 4 x (1 + repeat c8 x 2 + 1) + halt.
+        check('sample counters_preloaded_mto.atp: 41 vectors', len(r.vectors()) == 41, len(r.vectors()))
+        fields = sorted({v.split('>')[0].strip() for v in r.vectors()})
+        check('sample counters_preloaded_mto.atp: no loop or repeat left on a vector',
+              fields == ['', 'halt'], fields)
+        # Two jam lines, plus the inc line on each of the 4 write and 4 read passes.
+        check('sample counters_preloaded_mto.atp: 10 MTO lines',
+              r.count(r'^\(mto') == 10, r.count(r'^\(mto'))
+        check('sample counters_preloaded_mto.atp: warns once about MTO in vm_vector',
+              r.warnings().count('MTO lines kept in a vm_vector module') == 1, r.warnings())
+        check('sample counters_preloaded_mto.atp: each mode names the values it did not use',
+              'not used by Expand Loop: c7, c8' in r.infos()
+              and 'not used by Expand Repeat: c0' in r.infos(), r.infos())
+
+
 def main():
     for fn in (check_modes, check_march6n, check_mychecker, check_synthetic, check_pass_through,
-               check_failures, check_msb_in_loop, check_unread_counters):
+               check_failures, check_msb_in_loop, check_unread_counters, check_preloaded_counters,
+               check_samples):
         print(f'\n--- {fn.__name__} ---')
         fn()
 

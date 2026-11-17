@@ -16,6 +16,7 @@ if REPO not in sys.path:
     sys.path.insert(0, REPO)
 
 from src.atp_handler import ConfigError, analyse_merge_config  # noqa: E402
+from src.counter_expand import parse_counter_values  # noqa: E402
 from src.logger import Logger  # noqa: E402
 from src.main import process_atp_simple  # noqa: E402
 
@@ -121,10 +122,19 @@ def check_validation(work):
         ('Capture without a pin is rejected', [_op([7], 'DSSC Capture', '')]),
         ('Capture without a cycle is rejected', [_op([], 'DSSC Capture', 'TDO')]),
         ('Add Opcode without a User String is rejected', [_op([7], 'Add Opcode', '', '')]),
+        ('Expand Loop with an unreadable User String is rejected',
+         [_op([], 'Expand Loop', '', 'c0=abc')]),
     ]
     for name, config in cases:
         result = process_atp_simple(_atp_files(), logger=logger, config_list=config)
         check(name, result == [], f'returned {result}')
+
+    messages = []
+    process_atp_simple(_atp_files(), logger=Logger(gui_callback=messages.append),
+                       config_list=[_op([], 'Expand Loop', '', 'c0=abc')])
+    errors = ' | '.join(m for m in messages if m.startswith('Error'))
+    check('an unreadable User String is reported with the mode, file and reason',
+          "Expand Loop on Sample_ATP.atp: User String: cannot read 'c0=abc'" in errors, errors)
 
     result = process_atp_simple(_atp_files(), logger=logger,
                                 config_list=[_op([7], 'Add Opcode', '', 'set_msb_infinite')])
@@ -136,6 +146,46 @@ def check_validation(work):
                                               "UserString": '', "TimeMode": "Single",
                                               "IndexMode": "Cycle"}])
     check('unmatched Pattern warns and is skipped, without failing the run', result == [])
+
+
+# --- counter values in User String -------------------------------------------
+
+def check_counter_values(work):
+    check('two counter values are read as run counts',
+          parse_counter_values('c0=262144; c7=8') == {0: 262144, 7: 8})
+    check('spaces, an upper-case C and a trailing ; are accepted',
+          parse_counter_values(' C0 = 5 ;c15=1; ') == {0: 5, 15: 1})
+    check('blank text gives no values',
+          parse_counter_values('') == {} and parse_counter_values('   ') == {})
+    check('the largest run count is accepted',
+          parse_counter_values('c0=268435455') == {0: 268435455})
+    for text, needle in (('c0', 'cannot read'), ('c0=1, c7=8', 'cannot read'),
+                         ('c0=0x10', 'cannot read'), ('c16=1', 'c16 is not a user counter'),
+                         ('c0=1; c0=2', 'c0 is given twice'), ('c0=0', 'outside 1..268435455'),
+                         ('c0=268435456', 'outside 1..268435455')):
+        try:
+            parse_counter_values(text)
+            reason = None
+        except ValueError as e:
+            reason = str(e)
+        check(f'User String {text!r} is rejected with {needle!r}',
+              reason is not None and needle in reason, reason)
+
+
+def check_classical_hint(work):
+    """The Tk Classical tab's User String box starts with hint text; left as is it means empty."""
+    import PAE  # the Tk app module; importing it builds no window
+    check('the untouched hint text counts as an empty User String',
+          PAE._user_string(PAE._USER_STRING_HINT) == ''
+          and PAE._user_string(' ' + PAE._USER_STRING_HINT + ' ') == '')
+    check('a typed User String is kept as typed',
+          PAE._user_string('c0=262144; c7=8') == 'c0=262144; c7=8')
+    # Typing the VBT's register value X instead of X+1 silently loses one pass,
+    # so the web app's User String help must say so.
+    with open(os.path.join(REPO, 'PAE_webapp.py'), encoding='utf-8') as f:
+        webapp = f.read()
+    check('the web app User String help explains that VBT Counter = X means X+1 runs',
+          'Counter = X means X+1 runs' in webapp)
 
 
 # --- failure propagation ---------------------------------------------------
@@ -288,7 +338,8 @@ def check_parallel(work):
 
 
 def main():
-    for fn in (check_parser, check_validation, check_failures, check_user_string,
+    for fn in (check_parser, check_validation, check_counter_values, check_classical_hint,
+               check_failures, check_user_string,
                check_source_dir, check_scratch_files, check_parallel):
         cwd = os.getcwd()
         work = _workdir()
