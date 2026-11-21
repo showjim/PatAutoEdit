@@ -16,7 +16,8 @@ How to use the desktop or web app:
 ![PAT_UI](https://raw.githubusercontent.com/showjim/PatAutoEdit/master/img/PAT_UI.png "PAT_UI")
 1. Prepare the config CSV file — see [Config file format](#config-file-format) below;
 2. Choose the ATP files.
-3. Supported edits:
+4. (Optinal) Select pin map file, if you want to edit grouped pins.
+5. Supported edits:
 	* DigCap/DigSrc;
 	* HRAM/CMEM;
 	* Expand Repeat (remove "repeat N" and "repeat cX"); "Expand Pattern" is the old name of the same mode and will be dropped in a future version;
