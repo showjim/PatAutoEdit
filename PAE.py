@@ -13,15 +13,14 @@ import multiprocessing
 from multiprocessing import Pool, Manager
 
 # Import from new modular structure
-from src.atp_handler import (analyse_merge_config, build_config_from_classical,
+from patautoedit import version
+from patautoedit.atp_handler import (analyse_merge_config, build_config_from_classical,
                              ConfigError, MODE_LIST)
-from src.pattern_processor import extract_cycle_on_keyword
-from src.main import process_atp_simple, dispatch_config_parallel
-from src.logger import Logger
+from patautoedit.pattern_processor import extract_cycle_on_keyword
+from patautoedit.main import process_atp_simple, dispatch_config_parallel
+from patautoedit.logger import Logger
 
 multiprocessing.freeze_support()
-
-version = 'V1.16.0'
 
 #: Text the Classical tab's User String box starts with.
 _USER_STRING_HINT = "Please Enter the User String"

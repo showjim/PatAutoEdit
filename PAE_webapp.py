@@ -5,11 +5,11 @@ import streamlit as st
 import pandas as pd
 import os
 from pathlib import Path
-from src.atp_handler import ConfigError, MODE_LIST
-from src.main import process_atp_simple
-from src.file_ops import  get_all_files_list, make_zip
-from src.logger import Logger
-from PAE import version
+from patautoedit.atp_handler import ConfigError, MODE_LIST
+from patautoedit.main import process_atp_simple
+from patautoedit.file_ops import  get_all_files_list, make_zip
+from patautoedit.logger import Logger
+from patautoedit import version
 
 
 def check_password():
@@ -180,7 +180,7 @@ By ENTERING PASSWORD "teradyne" of this tool, you acknowledge that you have read
             "User String": st.column_config.TextColumn(
                 "User String",
                 help="Add Opcode / Remove Opcode: the opcode text. "
-                     "Expand Repeat / Expand Loop: counter run counts, e.g. c0=262144; c7=8. "
+                     "Expand Repeat / Expand Loop: counter run counts, e.g. c0=<count>; c7=<count>. "
                      "A VBT line Counter = X means X+1 runs.",
                 width="medium",
             ),

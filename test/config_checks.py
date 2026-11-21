@@ -15,10 +15,10 @@ REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if REPO not in sys.path:
     sys.path.insert(0, REPO)
 
-from src.atp_handler import ConfigError, analyse_merge_config  # noqa: E402
-from src.counter_expand import parse_counter_values  # noqa: E402
-from src.logger import Logger  # noqa: E402
-from src.main import process_atp_simple  # noqa: E402
+from patautoedit.atp_handler import ConfigError, analyse_merge_config  # noqa: E402
+from patautoedit.counter_expand import parse_counter_values  # noqa: E402
+from patautoedit.logger import Logger  # noqa: E402
+from patautoedit.main import process_atp_simple  # noqa: E402
 
 SAMPLE_DIR = os.path.join(REPO, 'Sample')
 ATP = 'Sample_ATP.atp'
@@ -131,6 +131,13 @@ def check_validation(work):
 
     messages = []
     process_atp_simple(_atp_files(), logger=Logger(gui_callback=messages.append),
+                       config_list=[_op([7], 'Not A Mode', 'TDO')])
+    errors = ' | '.join(m for m in messages if m.startswith('Error'))
+    check('an unknown Process Type is reported without a dangling "is required"',
+          'is not a known mode' in errors and 'is required' not in errors, errors)
+
+    messages = []
+    process_atp_simple(_atp_files(), logger=Logger(gui_callback=messages.append),
                        config_list=[_op([], 'Expand Loop', '', 'c0=abc')])
     errors = ' | '.join(m for m in messages if m.startswith('Error'))
     check('an unreadable User String is reported with the mode, file and reason',
@@ -174,12 +181,18 @@ def check_counter_values(work):
 
 def check_classical_hint(work):
     """The Tk Classical tab's User String box starts with hint text; left as is it means empty."""
-    import PAE  # the Tk app module; importing it builds no window
-    check('the untouched hint text counts as an empty User String',
-          PAE._user_string(PAE._USER_STRING_HINT) == ''
-          and PAE._user_string(' ' + PAE._USER_STRING_HINT + ' ') == '')
-    check('a typed User String is kept as typed',
-          PAE._user_string('c0=262144; c7=8') == 'c0=262144; c7=8')
+    try:
+        import PAE  # the Tk app module; importing it builds no window
+    except ModuleNotFoundError as e:
+        if e.name not in ('tkinter', '_tkinter'):
+            raise
+        print(f'SKIP  Tk is not installed ({e}); Tk hint checks skipped')
+    else:
+        check('the untouched hint text counts as an empty User String',
+              PAE._user_string(PAE._USER_STRING_HINT) == ''
+              and PAE._user_string(' ' + PAE._USER_STRING_HINT + ' ') == '')
+        check('a typed User String is kept as typed',
+              PAE._user_string('c0=262144; c7=8') == 'c0=262144; c7=8')
     # Typing the VBT's register value X instead of X+1 silently loses one pass,
     # so the web app's User String help must say so.
     with open(os.path.join(REPO, 'PAE_webapp.py'), encoding='utf-8') as f:
@@ -305,7 +318,7 @@ def check_parallel(work):
     Generate button stays disabled forever."""
     os.chdir(work)
     from multiprocessing import Manager, Pool
-    from src.main import dispatch_config_parallel
+    from patautoedit.main import dispatch_config_parallel
 
     manager = Manager()
     results = manager.list()

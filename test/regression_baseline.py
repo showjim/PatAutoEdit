@@ -28,9 +28,9 @@ REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if REPO not in sys.path:
     sys.path.insert(0, REPO)
 
-from src.atp_handler import analyse_merge_config, build_config_from_classical  # noqa: E402
-from src.logger import Logger  # noqa: E402
-from src.main import process_atp_simple  # noqa: E402
+from patautoedit.atp_handler import analyse_merge_config, build_config_from_classical  # noqa: E402
+from patautoedit.logger import Logger  # noqa: E402
+from patautoedit.main import process_atp_simple  # noqa: E402
 
 SAMPLE_DIR = os.path.join(REPO, 'Sample')
 CONFIG = os.path.join(SAMPLE_DIR, 'Sample_ATP - simple.csv')
