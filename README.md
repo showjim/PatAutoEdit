@@ -13,9 +13,9 @@ This repository contains a desktop app, a web app, and a command-line tool.
 The PyPI package ships the command-line tool only; see [Command line](#command-line).
 
 How to use the desktop or web app:
+![PAT_UI](https://raw.githubusercontent.com/showjim/PatAutoEdit/master/img/PAT_UI.png "PAT_UI")
 1. Prepare the config CSV file — see [Config file format](#config-file-format) below;
-2. Choose the ATP file, config file, Pin Name (one pin, a comma-separated list, or a pin group), edit method and time mode.
-	![PAT_UI](https://raw.githubusercontent.com/showjim/PatAutoEdit/master/img/PAT_UI.png "PAT_UI")
+2. Choose the ATP files.
 3. Supported edits:
 	* DigCap/DigSrc;
 	* HRAM/CMEM;
