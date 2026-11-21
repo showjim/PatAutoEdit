@@ -221,8 +221,8 @@ def check_failures(work):
 # --- pin data on the last vector pin ---------------------------------------
 
 def check_last_pin(work):
-    """The last vector pin's value has the ';' attached. That must not hide
-    invalid pin data from the check, and the replacement must keep the ';'."""
+    """The last vector pin's value may carry the ';' or have it as a separate
+    token. Neither form may hide invalid data, and both must keep the ';'."""
     os.chdir(work)
 
     messages = []
@@ -243,6 +243,27 @@ def check_last_pin(work):
             lines = [line.strip() for line in f if '(PORN):DigSrc = Send' in line]
     check('a last-pin edit keeps the ";" terminator',
           len(lines) == 2 and all('D;' in line for line in lines), repr(lines))
+
+    spaced = os.path.join('Sample', 'Spaced.atp')
+    with open(spaced, 'w') as f:
+        f.write('opcode_mode=single;\nimport tset t;\n\n'
+                'vector ( $tset, A, B )\n{\n> t 0 0 ;\n}\n')
+    op = dict(_op([0], 'DSSC Capture', 'B'), ATPFile='Spaced.atp')
+    messages = []
+    result = process_atp_simple([spaced], logger=Logger(gui_callback=messages.append),
+                                config_list=[op])
+    errors = ' | '.join(m for m in messages if m.startswith('Error'))
+    check('a space before the ";" does not hide invalid last-pin data',
+          result == [] and '0 data found in DigCap' in errors, errors)
+
+    op = dict(_op([0], 'DSSC Source', 'B'), ATPFile='Spaced.atp')
+    result = process_atp_simple([spaced], logger=Logger(), config_list=[op])
+    lines = []
+    if result:
+        with open(result[0]) as f:
+            lines = [line.strip() for line in f if '(B):DigSrc = Send' in line]
+    check('a space before the ";" still gives a valid last-pin edit',
+          len(lines) == 1 and 'D ;' in lines[0], repr(lines))
 
 
 # --- capability ------------------------------------------------------------
