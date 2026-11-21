@@ -1,0 +1,79 @@
+name: Publish to PyPI
+
+# PyPI Trusted Publishing: no API token is stored. The project trusts this
+# repo + workflow + environment (configured at pypi.org), and the job trades
+# a GitHub OIDC token for upload rights.
+on:
+  push:
+    tags:
+      - "V[0-9]*"
+      - "v[0-9]*"
+  workflow_dispatch:
+
+jobs:
+  test:
+    name: Test Python ${{ matrix.python-version }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.11", "3.12", "3.13", "3.14"]
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Run checks
+        run: |
+          python test/config_checks.py
+          python test/cli_checks.py
+
+  build:
+    name: Build
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install build tools
+        run: |
+          python -m pip install --upgrade pip
+          pip install build
+
+      - name: Build package
+        run: python -m build
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v5
+        with:
+          name: dist
+          path: dist/
+
+  publish-to-pypi:
+    name: Publish to PyPI
+    needs: build
+    # A manual workflow_dispatch run only builds; publishing requires a tag.
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/p/patautoedit
+    permissions:
+      id-token: write
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v5
+        with:
+          name: dist
+          path: dist/
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1

@@ -1,1 +1,0 @@
-# PatAutoEdit source package

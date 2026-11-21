@@ -4,6 +4,14 @@ EditPat edits ATP pattern files for Teradyne IG-XL testers. Each edit is one row
 
 ## Language
 
+**Operation**:
+One row of a config CSV: one edit applied to one ATP. Rows sharing a `Pattern` form a chain and run top to bottom.
+_Avoid_: step, task
+
+**Process Type**:
+The field on an operation that selects what the edit does, for example `DSSC Capture` or `Expand Loop`, written in the config column `Process Type`.
+_Avoid_: mode (that is the internal code name)
+
 **Expand**:
 Writing each pass of a loop, or each run of a repeated vector, out as its own vectors. MTO commands stay on every copy.
 _Avoid_: flatten, unroll

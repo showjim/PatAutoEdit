@@ -15,6 +15,40 @@ How to use：
 	* Counters loaded by the test program: give their values in User String — see [Counters loaded by the test program](#counters-loaded-by-the-test-program);
 	* Compress Pattern(add "repeat");
 
+## Command line
+
+The PyPI package ships the CLI only. Install it with Python 3.10 or newer:
+
+```bash
+pip install patautoedit
+```
+
+From a repo checkout, `pip install -e .` gives the same command, and
+`python -m patautoedit` works without installing.
+
+```bash
+patautoedit run config.csv --atp-dir Sample
+patautoedit run config.csv --atp-dir Sample --output-dir out/run1 --json
+patautoedit check config.csv --atp-dir Sample
+patautoedit modes
+```
+
+- `run` applies the config. Edited files go to `Output/` under the current
+  directory unless `--output-dir` is given.
+- `check` validates the config and prints what would run. It writes nothing.
+- `modes` lists the Process Types and the fields each one needs.
+- `--json` prints one JSON object on stdout; log lines go to stderr. Exit
+  codes: `0` success, `1` a rejected config, a failed file, or no matched file,
+  `2` usage error.
+- `--atp-dir` defaults to the config file's folder. `--atp FILE` (repeatable)
+  names candidate files explicitly and overrides `--atp-dir`.
+- A `Pattern` that matches no candidate file is a warning and a skip, not an
+  error. If nothing matches at all, the run exits 1.
+- The CLI uses the config CSV path: Single time mode and Cycle index. Dual-mode
+  or vector-index files need the desktop app's Classical tab.
+
+The desktop and web apps are not in the wheel; run them from a repo checkout.
+
 ## Config file format
 
 **One row is one operation.** Rows that share the same `Pattern` form a chain and

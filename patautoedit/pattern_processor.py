@@ -4,13 +4,13 @@ Pattern processing module for ATP file modifications
 import os, csv
 import re
 from typing import List, Optional
-from src.file_ops import openfile, copy_and_rename, scratch_path
-from src.utils import (get_repeat_cnt, cmp, check_in_range, check_in_same_range, get_all_files,
+from patautoedit.file_ops import openfile, copy_and_rename, scratch_path
+from patautoedit.utils import (get_repeat_cnt, cmp, check_in_range, check_in_same_range, get_all_files,
                        without_labels)
-from src.atp_handler import find_pin_index
-from src.counter_expand import (expand_loops, expand_counter_repeats, has_counter_repeat,
+from patautoedit.atp_handler import find_pin_index
+from patautoedit.counter_expand import (expand_loops, expand_counter_repeats, has_counter_repeat,
                                 log_unused_counters, parse_counter_values)
-from src.logger import Logger
+from patautoedit.logger import Logger
 
 def remove_opcode(something: str, user_string: str) -> str:
     """Remove specified opcode from ATP file"""
@@ -276,17 +276,18 @@ def _write_instrument_header(new_atp_file, mode: str, pin_name: str, pin_name_or
 
 def edit_pattern(logger: Logger, pin_name: str, something: str, cycle_range: List,
                 mode: str, timemode: str, index_mode: str, user_string: str = '',
-                pin_name_ori: str = "") -> Optional[str]:
+                pin_name_ori: str = "", output_dir: Optional[str] = None) -> Optional[str]:
     """Edit ATP pattern file according to specified mode and parameters.
 
     Dispatches to mode-specific handler functions for the actual pattern modifications.
 
-    Returns the path to the edited file in Output/, or None if the edit failed.
+    Returns the path to the edited file in `output_dir` (default: Output/ under the
+    current directory), or None if the edit failed.
     Callers must not treat a None return as a produced file.
     """
-    output_path = os.path.join(os.getcwd(), 'Output')
-    if not os.path.exists(output_path):
-        os.mkdir(output_path)
+    output_path = (os.path.abspath(output_dir) if output_dir
+                   else os.path.join(os.getcwd(), 'Output'))
+    os.makedirs(output_path, exist_ok=True)
 
     otherthing = os.path.join(output_path, os.path.basename(something))
 

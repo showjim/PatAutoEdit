@@ -4,9 +4,9 @@ ATP file handling module
 import csv
 import re
 from typing import Dict, List
-from src.file_ops import openfile
-from src.utils import process_input_cycles
-from src.logger import Logger
+from patautoedit.file_ops import openfile
+from patautoedit.utils import process_input_cycles
+from patautoedit.logger import Logger
 csv.field_size_limit(100000000)
 
 #: Processing modes the tool understands. Single source of truth for the

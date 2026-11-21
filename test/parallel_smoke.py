@@ -7,9 +7,9 @@ if REPO not in sys.path:
     sys.path.insert(0, REPO)
 
 from multiprocessing import Pool, Manager
-from src.logger import Logger
-from src.main import dispatch_config_parallel
-from src.atp_handler import analyse_merge_config, build_config_from_classical
+from patautoedit.logger import Logger
+from patautoedit.main import dispatch_config_parallel
+from patautoedit.atp_handler import analyse_merge_config, build_config_from_classical
 
 
 def run():

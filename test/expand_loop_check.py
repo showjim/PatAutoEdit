@@ -21,10 +21,10 @@ REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if REPO not in sys.path:
     sys.path.insert(0, REPO)
 
-from src.atp_handler import MODE_LIST, analyse_merge_config, missing_requirements  # noqa: E402
-from src.logger import Logger  # noqa: E402
-from src.main import process_atp_simple  # noqa: E402
-from src.pattern_processor import edit_pattern  # noqa: E402
+from patautoedit.atp_handler import MODE_LIST, analyse_merge_config, missing_requirements  # noqa: E402
+from patautoedit.logger import Logger  # noqa: E402
+from patautoedit.main import process_atp_simple  # noqa: E402
+from patautoedit.pattern_processor import edit_pattern  # noqa: E402
 
 FIXTURES = os.path.join(REPO, 'Sample', 'expand_loop')
 SAMPLE_ATP = os.path.join(REPO, 'Sample', 'Sample_ATP.atp')

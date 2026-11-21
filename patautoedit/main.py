@@ -5,12 +5,12 @@ Created on Dec 8, 2015
 '''
 import os
 from typing import List, Dict, Any, Optional
-from src.atp_handler import (read_pinmap, analyse_merge_config,
+from patautoedit.atp_handler import (read_pinmap, analyse_merge_config,
                              build_config_from_classical, missing_requirements, MODE_LIST,
                              COUNTER_MODES)
-from src.counter_expand import parse_counter_values
-from src.pattern_processor import edit_pattern
-from src.logger import Logger
+from patautoedit.counter_expand import parse_counter_values
+from patautoedit.pattern_processor import edit_pattern
+from patautoedit.logger import Logger
 
 
 # ---------------------------------------------------------------------------
@@ -53,7 +53,7 @@ def _resolve_atp_path(tmp_file_name: str, atp_files: List[str]) -> int:
     return -1
 
 
-def _validate_config(config_list: List[Dict], atp_files: List[str], logger: Logger) -> bool:
+def _validate_config(config_list: List[Dict], atp_files: List[str], logger: Logger):
     """Check a whole config list before any of it is dispatched.
 
     Reports every problem rather than stopping at the first, so one run tells
@@ -61,17 +61,24 @@ def _validate_config(config_list: List[Dict], atp_files: List[str], logger: Logg
     warning and a skip, not an error: a config legitimately covers more files
     than are selected for a given run.
 
-    Returns True when the run may proceed.
+    Returns (may_proceed, problems, missing_patterns).
     """
     problems = []
+    missing = []
     for op in config_list:
-        for field in missing_requirements(op):
-            problems.append(f"{op.get('Mode', '')} on {op.get('ATPFile', '')}: {field} is required")
-        if op.get("Mode") in COUNTER_MODES:
+        mode = op.get("Mode", "")
+        fields = missing_requirements(op)
+        if mode not in MODE_LIST:
+            # missing_requirements already returns a complete sentence here.
+            problems.extend(f"{mode} on {op.get('ATPFile', '')}: {field}" for field in fields)
+        else:
+            problems.extend(f"{mode} on {op.get('ATPFile', '')}: {field} is required"
+                            for field in fields)
+        if mode in COUNTER_MODES:
             try:
                 parse_counter_values(op.get("UserString", ""))
             except ValueError as e:
-                problems.append(f"{op.get('Mode', '')} on {op.get('ATPFile', '')}: User String: {e}")
+                problems.append(f"{mode} on {op.get('ATPFile', '')}: User String: {e}")
 
     seen = set()
     for op in config_list:
@@ -80,25 +87,27 @@ def _validate_config(config_list: List[Dict], atp_files: List[str], logger: Logg
             continue
         seen.add(pattern)
         if _resolve_atp_path(pattern, atp_files) < 0:
+            missing.append(pattern)
             logger.warning("Cannot find atp file: " + pattern)
 
     for message in problems:
         logger.error(message)
     if problems:
         logger.error(f"Configuration rejected, {len(problems)} problem(s) found. Nothing was processed.")
-        return False
-    return True
+        return False, problems, missing
+    return True, problems, missing
 
 
-def _run_chained_ops(atp_file_path: str, ops: List[Dict], logger: Logger) -> Optional[str]:
+def _run_chained_ops(atp_file_path: str, ops: List[Dict], logger: Logger,
+                     output_dir: Optional[str] = None) -> Optional[str]:
     """Sequentially apply a list of ops to a single ATP file.
 
     ops is a list of normalized config dicts (TimeMode already '1'/'2', pin group
-    expanded). Each op reads the previous op's output, which lives in Output/,
-    so an intermediate is always inspectable and nothing is written next to the
-    source ATP.
+    expanded). Each op reads the previous op's output, which lives in output_dir
+    (default: Output/ under the current directory), so an intermediate is always
+    inspectable and nothing is written next to the source ATP.
 
-    Returns the final output file path in Output/, or None if any op failed.
+    Returns the final output file path, or None if any op failed.
     A failure stops the chain: later ops depend on the failed op's output, so
     continuing would produce a file that is neither the requested chain nor the
     original.
@@ -108,7 +117,8 @@ def _run_chained_ops(atp_file_path: str, ops: List[Dict], logger: Logger) -> Opt
     """
     prcs_file_name = atp_file_path
     result_file = None
-    output_path = os.path.join(os.getcwd(), 'Output')
+    output_path = (os.path.abspath(output_dir) if output_dir
+                   else os.path.join(os.getcwd(), 'Output'))
     prev_output_path = os.path.join(output_path, os.path.basename(atp_file_path))
 
     for idx, op in enumerate(ops):
@@ -135,6 +145,7 @@ def _run_chained_ops(atp_file_path: str, ops: List[Dict], logger: Logger) -> Opt
             op.get("IndexMode", 'Cycle'),
             op.get("UserString", ""),
             op.get("PinNameOri", ""),
+            output_dir=output_dir,
         )
 
         if result_file is None:
@@ -173,6 +184,94 @@ def _group_ops_by_atp(config_list: List[Dict], atp_files: List[str],
     return [(p, groups[p]) for p in order]
 
 
+class _ErrorCapture:
+    """Logger wrapper that records errors for one file and forwards everything."""
+
+    def __init__(self, logger: Logger):
+        self.logger = logger
+        self.errors: List[str] = []
+
+    def info(self, msg):
+        self.logger.info(msg)
+
+    def warning(self, msg):
+        self.logger.warning(msg)
+
+    def error(self, msg):
+        self.errors.append(msg)
+        self.logger.error(msg)
+
+    def put(self, msg):
+        self.logger.put(msg)
+
+
+def run_config(atp_files: List[str], config_list: List[Dict], logger: Logger,
+               pin_map: str = "", output_dir: Optional[str] = None) -> Dict[str, Any]:
+    """Apply a config list and return a structured result for the CLI.
+
+    Keys: ok, output_dir, outputs, failed, skipped, problems. A Pattern that
+    matches no ATP is reported in `skipped` and does not fail the run; a valid
+    config that matches nothing is not ok.
+    """
+    ok, problems, missing = _validate_config(config_list, atp_files, logger)
+    result: Dict[str, Any] = {
+        "ok": False,
+        "output_dir": (os.path.abspath(output_dir) if output_dir
+                       else os.path.join(os.getcwd(), 'Output')),
+        "outputs": [],
+        "failed": [],
+        "skipped": missing,
+        "problems": problems,
+    }
+    if not ok:
+        return result
+
+    pingroup_dict = read_pinmap(pin_map) if pin_map else None
+    groups = _group_ops_by_atp(config_list, atp_files, pingroup_dict)
+
+    for atp_path, ops in groups:
+        capture = _ErrorCapture(logger)
+        final_file = _run_chained_ops(atp_path, ops, capture, output_dir=output_dir)
+        if final_file:
+            result["outputs"].append({
+                "source": atp_path,
+                "output": final_file,
+                "operations": len(ops),
+            })
+        else:
+            result["failed"].append({"source": atp_path, "errors": capture.errors})
+
+    result["ok"] = not result["failed"] and bool(groups)
+    return result
+
+
+def check_config(atp_files: List[str], config_list: List[Dict], logger: Logger,
+                 pin_map: str = "") -> Dict[str, Any]:
+    """Validate a config list and describe what a run would do, without writing.
+
+    Keys: ok, problems, skipped, plan. `plan` has one item per matched ATP:
+    {"source": path, "operations": [Process Type, ...]}.
+    """
+    ok, problems, missing = _validate_config(config_list, atp_files, logger)
+    result: Dict[str, Any] = {
+        "ok": False,
+        "problems": problems,
+        "skipped": missing,
+        "plan": [],
+    }
+    if not ok:
+        return result
+
+    pingroup_dict = read_pinmap(pin_map) if pin_map else None
+    groups = _group_ops_by_atp(config_list, atp_files, pingroup_dict)
+    result["plan"] = [
+        {"source": atp_path, "operations": [op.get("Mode", "") for op in ops]}
+        for atp_path, ops in groups
+    ]
+    result["ok"] = bool(groups)
+    return result
+
+
 # ---------------------------------------------------------------------------
 # Unified processing entry points
 # ---------------------------------------------------------------------------
@@ -182,7 +281,8 @@ def process_atp_simple(atp_files: List[str],
                        logger: Optional[Logger] = None,
                        pin_map: str = "",
                        *,
-                       config_list: Optional[List[Dict]] = None) -> List[str]:
+                       config_list: Optional[List[Dict]] = None,
+                       output_dir: Optional[str] = None) -> List[str]:
     """Process ATP files according to a merge configuration (single-process).
 
     Accepts either a merge_config_file path (legacy behavior) OR a pre-built
@@ -196,17 +296,12 @@ def process_atp_simple(atp_files: List[str],
     if config_list is None:
         config_list = analyse_merge_config(merge_config_file, logger)
 
-    if not _validate_config(config_list, atp_files, logger):
-        return []
-
-    pingroup_dict = read_pinmap(pin_map) if pin_map else None
-    groups = _group_ops_by_atp(config_list, atp_files, pingroup_dict)
-
+    run = run_config(atp_files, config_list, logger, pin_map=pin_map,
+                     output_dir=output_dir)
     result: List[str] = []
-    for atp_path, ops in groups:
-        final_file = _run_chained_ops(atp_path, ops, logger)
-        if final_file and final_file not in result:
-            result.append(final_file)
+    for item in run["outputs"]:
+        if item["output"] not in result:
+            result.append(item["output"])
     return result
 
 
@@ -245,7 +340,8 @@ def dispatch_config_parallel(pool, atp_files: List[str], config_list: List[Dict]
     unexpected exception in a worker still counts as a finished task — otherwise
     the completion counter never reaches the total and the UI waits forever.
     """
-    if not _validate_config(config_list, atp_files, mp_logger):
+    ok, _, _ = _validate_config(config_list, atp_files, mp_logger)
+    if not ok:
         return 0
 
     pingroup_dict = read_pinmap(pin_map) if pin_map else None

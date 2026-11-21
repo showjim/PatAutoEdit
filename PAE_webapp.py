@@ -5,11 +5,11 @@ import streamlit as st
 import pandas as pd
 import os
 from pathlib import Path
-from src.atp_handler import ConfigError, MODE_LIST
-from src.main import process_atp_simple
-from src.file_ops import  get_all_files_list, make_zip
-from src.logger import Logger
-from PAE import version
+from patautoedit.atp_handler import ConfigError, MODE_LIST
+from patautoedit.main import process_atp_simple
+from patautoedit.file_ops import  get_all_files_list, make_zip
+from patautoedit.logger import Logger
+from patautoedit import version
 
 
 def check_password():

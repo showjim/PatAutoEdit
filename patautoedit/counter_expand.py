@@ -23,9 +23,9 @@ starting values and do not set the MSB register.
 import re
 from typing import Dict, List, Optional, Set, Tuple
 
-from src.file_ops import openfile
-from src.logger import Logger
-from src.utils import is_label_line
+from patautoedit.file_ops import openfile
+from patautoedit.logger import Logger
+from patautoedit.utils import is_label_line
 
 _MODULE = re.compile(r'^\s*(srm_vector|vm_vector|vector)\b')
 _OPCODE_MODE = re.compile(r'^\s*opcode_mode\s*=\s*(\w+)', re.IGNORECASE)
