@@ -14,7 +14,7 @@ The PyPI package ships the command-line tool only; see [Command line](#command-l
 
 How to use the desktop or web app:
 1. Prepare the config CSV file — see [Config file format](#config-file-format) below;
-2. Choose the ATP file, config file, Pin Name (single pin support only), edit method and time mode.
+2. Choose the ATP file, config file, Pin Name (one pin, a comma-separated list, or a pin group), edit method and time mode.
 	![PAT_UI](https://raw.githubusercontent.com/showjim/PatAutoEdit/master/img/PAT_UI.png "PAT_UI")
 3. Supported edits:
 	* DigCap/DigSrc;
@@ -63,6 +63,8 @@ In a repo checkout, `Sample/` holds example ATPs. The counter examples are in
 - `--atp-dir` defaults to the config file's folder. It scans that folder only,
   not subfolders. `--atp FILE` (repeatable) names candidate files explicitly
   and overrides `--atp-dir`.
+- `--pinmap FILE` loads a pin map so `Pin or Method` can name a pin group.
+  See [Pin groups](#pin-groups).
 - A `Pattern` that matches no candidate file is a warning and a skip, not an
   error. If nothing matches at all, the run exits 1.
 - The CLI uses the config CSV path: Single time mode and Cycle index. Dual-mode
@@ -93,7 +95,7 @@ Instance,Pattern,Status,Process Type,Pin or Method,Cycle,User String
 | --- | --- |
 | `Pattern` | ATP filename. Required. |
 | `Process Type` | One of: DSSC Capture, DSSC Source, CMEM/HRAM Capture, Expand Pattern, Expand Repeat, Expand Loop, Compress Pattern, WFLAG, Add Opcode, Remove Opcode. Required. |
-| `Pin or Method` | Used only by DSSC Capture, DSSC Source, and CMEM/HRAM Capture. |
+| `Pin or Method` | Used only by DSSC Capture, DSSC Source, and CMEM/HRAM Capture. One pin, a comma-separated list, or a pin group name when a pin map is loaded — see [Pin groups](#pin-groups). |
 | `Cycle` | `[a-b];[c-d]` form. Used by DSSC Capture, DSSC Source, CMEM/HRAM Capture, WFLAG, and Add Opcode. |
 | `User String` | The opcode text for `Add Opcode` / `Remove Opcode`. For `Expand Repeat`, `Expand Loop` and `Expand Pattern`: optional counter run counts, e.g. `c0=<count>; c7=<count>` — see [Counters loaded by the test program](#counters-loaded-by-the-test-program). Other modes ignore it. |
 | `Instance`, `Status` | Ignored. Kept for your own bookkeeping. |
@@ -101,6 +103,18 @@ Instance,Pattern,Status,Process Type,Pin or Method,Cycle,User String
 Column names are matched case-insensitively and column order does not matter.
 Your whole config is checked before anything runs, so a mistake is reported up
 front rather than half-way through a batch.
+
+### Pin groups
+
+`Pin or Method` accepts one pin (`TDO`), a comma-separated list (`TDO,TDI`), or
+a pin group name. A group name is expanded from an optional pin map file: pick
+one in the desktop or web app, or pass `--pinmap FILE` on the command line.
+Every pin in the group is edited together, and the instrument header in the
+output keeps the group name.
+
+The pin map is tab-separated. The first three lines are skipped. After that,
+column 2 is the group name and column 3 is one pin; repeat the group name on
+another row for each pin in that group.
 
 Note: the older 9-column format, where one row held two operations, is no longer
 supported. Such a file is rejected with a message showing the rows to use
