@@ -82,7 +82,7 @@ def build_config_from_classical(csv_file: str, mode: str, pin_name: str,
         time_mode: 'Single' or 'Dual' from GUI
         index_mode: 'Cycle' or 'Vector' from GUI
         user_string: Opcode text for 'Add Opcode' / 'Remove Opcode', or
-            counter run counts for the Expand modes (e.g. 'c0=262144; c7=8')
+            counter run counts for the Expand modes (e.g. 'c0=<count>; c7=<count>')
 
     Returns:
         List of config dicts in the same format as analyse_merge_config output

@@ -114,7 +114,7 @@ def _parse_counter(text: str, line_no: int) -> int:
 def parse_counter_values(text: str) -> Dict[int, int]:
     """Read preloaded counter run counts from a User String.
 
-    `c0=262144; c7=8` gives {0: 262144, 7: 8}; blank text gives {}. Raises
+    Each `cN=<count>` pair becomes `{N: count}`; blank text gives {}. Raises
     ValueError with a user-facing reason when the text cannot be used.
     """
     values: Dict[int, int] = {}
@@ -125,7 +125,7 @@ def parse_counter_values(text: str) -> Dict[int, int]:
         m = _COUNTER_VALUE.fullmatch(segment)
         if not m:
             raise ValueError(f"cannot read {segment!r}; write cN=run count, separated by ';' "
-                             f"(for example c0=262144; c7=8)")
+                             f"(for example c0=<count>; c7=<count>)")
         counter, value = int(m.group(1)), int(m.group(2))
         if counter >= _COUNTERS:
             raise ValueError(f'c{counter} is not a user counter (c0..c{_COUNTERS - 1})')
