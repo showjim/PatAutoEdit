@@ -53,7 +53,7 @@ def _chain4_config():
                 "PinName": pin, "TimeMode": "Single", "IndexMode": "Cycle"}
     return [
         op([7, 7, 12, 12], 'DSSC Capture', 'TDO'),
-        op([13, 14], 'DSSC Capture', 'PORN'),
+        op([13, 14], 'DSSC Source', 'PORN'),
         op([9, 9], 'DSSC Source', 'TDI'),
         op([8, 8], 'WFLAG', ''),
     ]

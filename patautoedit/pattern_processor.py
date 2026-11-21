@@ -212,12 +212,14 @@ def _validate_and_modify_pin_data(line_list: List, index: List[int],
             logger.error(f"'>' is not in list, {e} ")
             raise _PatternEditError()
         
-        pin_data = line_list[start_index + 1 + k + 1]
+        # The last vector pin's value carries the ';' terminator, so split it
+        # off before comparing and put it back with the replacement.
+        pin_data, sep, tail = line_list[start_index + 1 + k + 1].partition(';')
         if pin_data in invalid_values:
             logger.error(f"{pin_data} data found in {mode_label}, line {line_index}, and pin data index {k}")
             raise _PatternEditError()
         else:
-            line_list[start_index + 1 + k + 1] = replacement
+            line_list[start_index + 1 + k + 1] = replacement + sep + tail
     
     return line_list
 
@@ -483,7 +485,8 @@ def edit_pattern(logger: Logger, pin_name: str, something: str, cycle_range: Lis
                                         line = user_string + '\t' + line
 
                             except _PatternEditError:
-                                return None
+                                # Let the outer handler remove the partial temp file.
+                                raise
 
                         new_atp_file.write(line)
 

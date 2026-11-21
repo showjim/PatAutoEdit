@@ -218,6 +218,33 @@ def check_failures(work):
     check('a failure aborts the chain and drops the whole file', result == [], f'returned {result}')
 
 
+# --- pin data on the last vector pin ---------------------------------------
+
+def check_last_pin(work):
+    """The last vector pin's value has the ';' attached. That must not hide
+    invalid pin data from the check, and the replacement must keep the ';'."""
+    os.chdir(work)
+
+    messages = []
+    result = process_atp_simple(_atp_files(), logger=Logger(gui_callback=messages.append),
+                                config_list=[_op([13, 14], 'DSSC Capture', 'PORN')])
+    errors = ' | '.join(m for m in messages if m.startswith('Error'))
+    check('capture of 0/1 data on the last pin is rejected',
+          result == [] and '0 data found in DigCap' in errors, errors)
+
+    leftovers = os.listdir('Output') if os.path.isdir('Output') else []
+    check('a rejected op leaves no partial output file', leftovers == [], repr(leftovers))
+    shutil.rmtree('Output', ignore_errors=True)
+    result = process_atp_simple(_atp_files(), logger=Logger(),
+                                config_list=[_op([13, 14], 'DSSC Source', 'PORN')])
+    lines = []
+    if result:
+        with open(result[0]) as f:
+            lines = [line.strip() for line in f if '(PORN):DigSrc = Send' in line]
+    check('a last-pin edit keeps the ";" terminator',
+          len(lines) == 2 and all('D;' in line for line in lines), repr(lines))
+
+
 # --- capability ------------------------------------------------------------
 
 def check_user_string(work):
@@ -244,7 +271,7 @@ def check_source_dir(work):
 
     process_atp_simple(_atp_files(), logger=logger,
                        config_list=[_op([7, 7], 'DSSC Capture', 'TDO'),
-                                    _op([13, 14], 'DSSC Capture', 'PORN'),
+                                    _op([13, 14], 'DSSC Source', 'PORN'),
                                     _op([9, 9], 'DSSC Source', 'TDI')])
     check('a successful chain leaves the source directory untouched',
           set(os.listdir('Sample')) == before, str(set(os.listdir('Sample')) - before))
@@ -352,7 +379,7 @@ def check_parallel(work):
 
 def main():
     for fn in (check_parser, check_validation, check_counter_values, check_classical_hint,
-               check_failures, check_user_string,
+               check_failures, check_last_pin, check_user_string,
                check_source_dir, check_scratch_files, check_parallel):
         cwd = os.getcwd()
         work = _workdir()

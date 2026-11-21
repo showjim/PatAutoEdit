@@ -1,6 +1,6 @@
 Instance,Pattern,Status,Process Type,Pin or Method,Cycle,User String
 ,Sample_ATP.atp,Done,DSSC Capture,TDO,[7-7];[12-12],
-,Sample_ATP.atp,Done,DSSC Capture,PORN,[13-14],
+,Sample_ATP.atp,Done,DSSC Source,PORN,[13-14],
 ,Sample_ATP.atp,Done,DSSC Source,TDI,[9-9],
 ,Sample_ATP.atp,Done,WFLAG,,[8-8],
 ,Sample_ATP - 1.atp,Done,DSSC Source,TDI,[7-7];[9-9],
