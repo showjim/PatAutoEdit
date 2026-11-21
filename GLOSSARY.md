@@ -12,6 +12,10 @@ _Avoid_: step, task
 The field on an operation that selects what the edit does, for example `DSSC Capture` or `Expand Loop`, written in the config column `Process Type`.
 _Avoid_: mode (that is the internal code name)
 
+**Candidate ATP**:
+An ATP file offered to a run, either found in the `--atp-dir` folder or named with `--atp`. A config `Pattern` that matches no candidate ATP is skipped.
+_Avoid_: target file, input file
+
 **Expand**:
 Writing each pass of a loop, or each run of a repeated vector, out as its own vectors. MTO commands stay on every copy.
 _Avoid_: flatten, unroll
